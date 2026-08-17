@@ -1,0 +1,23 @@
+[project]
+name = "aap-api"
+version = "0.1.0"
+description = "AAP banking backend API"
+readme = "README.md"
+authors = [
+    { name = "Intergonal", email = "pear32768a1@gmail.com" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "flask>=3.1.3",
+    "flask-cors>=6.0.5",
+    "google-genai>=2.18.1",
+    "psycopg[binary]>=3.3.4",
+    "python-dotenv>=1.2.3",
+]
+
+[project.scripts]
+aap-api = "aap_api:main"
+
+[build-system]
+requires = ["uv_build>=0.10.7,<0.11.0"]
+build-backend = "uv_build"
