@@ -12,6 +12,7 @@ dependencies = [
     "flask-cors>=6.0.5",
     "google-genai>=2.18.1",
     "psycopg[binary]>=3.3.4",
+    "pyjwt>=2.13.0",
     "python-dotenv>=1.2.3",
 ]
 

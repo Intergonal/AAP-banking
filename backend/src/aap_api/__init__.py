@@ -2,6 +2,7 @@ from flask import Flask, jsonify
 from flask_cors import CORS
 
 from .routes import blueprints
+from .schema import init_db
 
 
 def create_app() -> Flask:
@@ -14,5 +15,7 @@ def create_app() -> Flask:
 
     for blueprint in blueprints:
         app.register_blueprint(blueprint)
+
+    init_db()
 
     return app
