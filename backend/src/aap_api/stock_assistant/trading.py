@@ -1,7 +1,8 @@
-"""Mock stock trading engine (DB-backed).
+"""Paper-trading engine (DB-backed).
 
-Per-user mock accounts: virtual cash, positions, and a trade history, all in
-PostgreSQL. Trades execute at live Yahoo Finance prices with virtual money.
+Per-user trading accounts: cash, positions, and a trade history, all in
+PostgreSQL. The account model matches a real implementation; trades execute at
+live Yahoo Finance prices but no real money is moved (demo).
 """
 
 from decimal import Decimal, ROUND_HALF_UP
@@ -84,7 +85,7 @@ def get_account(user_id: int) -> dict:
 
 
 def execute_trade(user_id: int, symbol: str, side: str, quantity: int) -> dict:
-    """Execute a mock buy/sell at the live price in a single DB transaction."""
+    """Execute a paper buy/sell at the live price in a single DB transaction."""
     symbol = (symbol or "").upper().strip()
     if not symbol:
         raise ValueError("symbol is required")
@@ -179,6 +180,76 @@ def execute_trade(user_id: int, symbol: str, side: str, quantity: int) -> dict:
             )
 
     return get_account(user_id)
+
+
+def transfer_cash(from_user_id: int, to_email: str, amount) -> dict:
+    """Transfer cash between two users' trading accounts (atomic)."""
+    to_email = (to_email or "").strip().lower()
+    if not to_email:
+        raise ValueError("recipient email is required")
+    try:
+        amount = _round_money(Decimal(str(amount)))
+    except Exception:
+        raise ValueError("amount must be a number") from None
+    if amount <= 0:
+        raise ValueError("amount must be greater than zero")
+
+    with psycopg.connect(get_conn_string()) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT id, name FROM users WHERE email = %s AND NOT disabled",
+                (to_email,),
+            )
+            row = cur.fetchone()
+            if row is None:
+                raise ValueError(f"no user found with email {to_email}")
+            to_user_id, to_name = row
+            if to_user_id == from_user_id:
+                raise ValueError("you cannot transfer to your own account")
+
+            ensure_account(from_user_id)
+            ensure_account(to_user_id)
+
+            cur.execute(
+                "SELECT cash FROM trading_accounts WHERE user_id = %s FOR UPDATE",
+                (from_user_id,),
+            )
+            row = cur.fetchone()
+            if row is None:
+                raise ValueError("account not found")
+            cash = Decimal(str(row[0]))
+            if amount > cash:
+                raise ValueError(
+                    f"insufficient cash: need ${amount:,.2f} but only ${cash:,.2f} available"
+                )
+
+            cur.execute(
+                "SELECT cash FROM trading_accounts WHERE user_id = %s FOR UPDATE",
+                (to_user_id,),
+            )
+            row = cur.fetchone()
+            to_cash = Decimal(str(row[0])) if row else Decimal("0")
+
+            cur.execute(
+                "UPDATE trading_accounts SET cash = %s WHERE user_id = %s",
+                (cash - amount, from_user_id),
+            )
+            cur.execute(
+                "UPDATE trading_accounts SET cash = %s WHERE user_id = %s",
+                (to_cash + amount, to_user_id),
+            )
+            cur.execute(
+                "INSERT INTO transfers (from_user_id, to_user_id, amount) "
+                "VALUES (%s, %s, %s)",
+                (from_user_id, to_user_id, amount),
+            )
+
+    return {
+        "to_name": to_name,
+        "to_email": to_email,
+        "amount": float(amount),
+        "account": get_account(from_user_id),
+    }
 
 
 def reset_account(user_id: int) -> dict:

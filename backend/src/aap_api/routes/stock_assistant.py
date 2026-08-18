@@ -1,13 +1,21 @@
+import psycopg
 import yfinance as yf
 from decimal import Decimal
 from flask import Blueprint, jsonify, request
 from google.genai import types
 
+from ..db import get_conn_string
 from ..stock_assistant.agent.rag import knowledge_base as kb
 from ..stock_assistant.agent.engine import run_agent
 from ..stock_assistant.ml import gateway
 from ..stock_assistant.ml.preprocess import TICKERS, build_sequence, fetch_5m_bars
-from ..stock_assistant.trading import execute_trade, get_account, get_price, reset_account
+from ..stock_assistant.trading import (
+    execute_trade,
+    get_account,
+    get_price,
+    reset_account,
+    transfer_cash,
+)
 from .auth import get_current_user
 
 stock_assistant = Blueprint(
@@ -43,8 +51,9 @@ def chat():
         return jsonify({"error": "message is required"}), 400
 
     history = _serialize_history(data.get("history") or [])
+    user = get_current_user()
     try:
-        reply, tool_calls = run_agent(history, message)
+        reply, tool_calls = run_agent(history, message, user_id=user["id"] if user else None)
     except Exception as e:
         return jsonify({"error": f"agent error: {e}"}), 502
 
@@ -121,12 +130,27 @@ def predict():
 
 # ── Mock trading ──────────────────────────────────────────────────────
 
-PRICE_PERIODS = {"1d": "15m", "5d": "1d", "1mo": "1d", "3mo": "1d", "6mo": "1d", "1y": "1d"}
+PRICE_PERIODS = {
+    "1m": ("7d", "1m"),
+    "5m": ("60d", "5m"),
+    "30m": ("60d", "30m"),
+    "1h": ("730d", "1h"),
+    "1d": ("10y", "1d"),
+}
 
 
 def _auth_user():
     user = get_current_user()
     if user is None:
+        return None
+    return user
+
+
+def _admin_user():
+    user = get_current_user()
+    if user is None:
+        return None
+    if not user["is_admin"]:
         return None
     return user
 
@@ -218,23 +242,85 @@ def prices(symbol):
             "error": f"period must be one of: {', '.join(PRICE_PERIODS)}"
         }), 400
     symbol = symbol.upper()
+    period_opt, interval = PRICE_PERIODS[period]
     try:
-        df = yf.Ticker(symbol).history(period=period, interval=PRICE_PERIODS[period], auto_adjust=True)
+        df = yf.Ticker(symbol).history(period=period_opt, interval=interval, auto_adjust=True)
     except Exception as e:
         return jsonify({"error": f"could not fetch price history for {symbol}: {e}"}), 502
     if df is None or df.empty:
         return jsonify({"error": f"no price history available for {symbol}"}), 404
     points = [
-        {"datetime": idx.to_pydatetime().isoformat(), "close": round(float(row["Close"]), 4)}
+        {
+            "datetime": idx.to_pydatetime().isoformat(),
+            "open": round(float(row["Open"]), 4),
+            "high": round(float(row["High"]), 4),
+            "low": round(float(row["Low"]), 4),
+            "close": round(float(row["Close"]), 4),
+        }
         for idx, row in df.iterrows()
     ]
     return jsonify({"symbol": symbol, "period": period, "points": points})
+
+
+@stock_assistant.post("/transfer")
+def transfer():
+    user = _auth_user()
+    if user is None:
+        return jsonify({"error": "unauthorized"}), 401
+    data = request.get_json(silent=True) or {}
+    to_email = (data.get("to_email") or "").strip()
+    try:
+        result = transfer_cash(user["id"], to_email, data.get("amount"))
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    return jsonify(result)
+
+
+@stock_assistant.get("/transfers")
+def transfers_list():
+    user = _auth_user()
+    if user is None:
+        return jsonify({"error": "unauthorized"}), 401
+    with psycopg.connect(get_conn_string()) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT t.id, t.amount, t.created_at,
+                       CASE WHEN t.from_user_id = %s THEN 'out' ELSE 'in' END AS direction,
+                       CASE WHEN t.from_user_id = %s THEN u_to.name ELSE u_from.name END AS counterparty_name,
+                       CASE WHEN t.from_user_id = %s THEN u_to.email ELSE u_from.email END AS counterparty_email
+                FROM transfers t
+                JOIN users u_from ON u_from.id = t.from_user_id
+                JOIN users u_to ON u_to.id = t.to_user_id
+                WHERE t.from_user_id = %s OR t.to_user_id = %s
+                ORDER BY t.created_at DESC, t.id DESC
+                LIMIT 20
+                """,
+                (user["id"], user["id"], user["id"], user["id"], user["id"]),
+            )
+            rows = cur.fetchall()
+
+    return jsonify(
+        [
+            {
+                "id": r[0],
+                "amount": float(r[1]),
+                "timestamp": r[2].isoformat(),
+                "direction": r[3],
+                "counterparty_name": r[4],
+                "counterparty_email": r[5],
+            }
+            for r in rows
+        ]
+    )
 
 
 # ── Knowledge base management ───────────────────────────────────────
 
 @stock_assistant.get("/kb")
 def kb_list():
+    if _admin_user() is None:
+        return jsonify({"error": "forbidden"}), 403
     try:
         return jsonify(kb.kb_overview())
     except Exception as e:
@@ -242,9 +328,9 @@ def kb_list():
 
 
 def _kb_mutation(mutation, *args):
-    """Apply a KB mutation (auth required), reload embeddings, return the fresh overview."""
-    if get_current_user() is None:
-        return jsonify({"error": "unauthorized"}), 401
+    """Apply a KB mutation (admin required), reload embeddings, return the fresh overview."""
+    if _admin_user() is None:
+        return jsonify({"error": "forbidden"}), 403
     try:
         mutation(*args)
     except ValueError as e:

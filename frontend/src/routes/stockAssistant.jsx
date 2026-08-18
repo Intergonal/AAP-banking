@@ -1,13 +1,13 @@
-import FeatureLayout from '../components/FeatureLayout.jsx'
 import StockAssistant from '../pages/StockAssistant.jsx'
 import TradingPage from '../stock_assistant/TradingPage.jsx'
+import TransferPage from '../stock_assistant/TransferPage.jsx'
 
 const stockAssistantRoutes = {
   path: 'stock-assistant',
-  element: <FeatureLayout title="Stock Assistant" />,
   children: [
     { index: true, element: <StockAssistant /> },
     { path: 'trading', element: <TradingPage /> },
+    { path: 'transfer', element: <TransferPage /> },
   ],
 }
 

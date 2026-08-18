@@ -3,8 +3,11 @@ import { Button } from '../components/ui/button.jsx'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card.jsx'
 import { Input } from '../components/ui/input.jsx'
 import { Label } from '../components/ui/label.jsx'
-import { getAccount, getPriceSeries, getQuote, placeTrade, resetAccount } from './api.js'
+import { getAccount, getPriceSeries, getQuote, placeTrade, resetAccount, runPrediction } from './api.js'
 import PriceChart from './PriceChart.jsx'
+import PredictionPanel from './PredictionPanel.jsx'
+
+const MODEL_TICKERS = ['AAPL', 'AMZN', 'GOOG', 'MSFT']
 
 function fmtMoney(v) {
   if (v === null || v === undefined) return '—'
@@ -23,10 +26,12 @@ function fmtSigned(v) {
 export default function TradingPage() {
   const [symbol, setSymbol] = useState('AAPL')
   const [symbolInput, setSymbolInput] = useState('AAPL')
-  const [period, setPeriod] = useState('1mo')
+  const [period, setPeriod] = useState('30m')
   const [points, setPoints] = useState([])
   const [chartLoading, setChartLoading] = useState(false)
   const [chartError, setChartError] = useState('')
+  const [prediction, setPrediction] = useState(null)
+  const [predictionError, setPredictionError] = useState('')
 
   const [quote, setQuote] = useState(null)
   const [account, setAccount] = useState(null)
@@ -47,6 +52,17 @@ export default function TradingPage() {
     }
   }
 
+  async function loadPrediction(sym, per) {
+    setPrediction(null)
+    setPredictionError('')
+    if (per !== '5m' || !MODEL_TICKERS.includes(sym)) return
+    try {
+      setPrediction(await runPrediction(sym))
+    } catch (err) {
+      setPredictionError(err.message)
+    }
+  }
+
   async function loadChart(sym, per) {
     setChartLoading(true)
     setChartError('')
@@ -60,6 +76,7 @@ export default function TradingPage() {
     } finally {
       setChartLoading(false)
     }
+    loadPrediction(sym, per)
   }
 
   async function loadQuote(sym) {
@@ -118,7 +135,7 @@ export default function TradingPage() {
   }
 
   async function handleReset() {
-    if (!window.confirm('Reset your mock account to $100,000 cash with no positions?')) return
+    if (!window.confirm('Reset your trading account to $100,000 cash with no positions?')) return
     try {
       setAccount(await resetAccount())
       setMessage({ kind: 'success', text: 'Account reset to $100,000.' })
@@ -135,14 +152,11 @@ export default function TradingPage() {
   return (
     <div className="flex flex-col gap-4">
       <Card>
-        <CardHeader>
-          <CardTitle>Mock Trading</CardTitle>
-          <p className="text-xs text-muted-foreground">
-            Paper trading with virtual money — prices are live from Yahoo Finance, no real
-            orders are placed.
-          </p>
-        </CardHeader>
         <CardContent className="flex flex-col gap-4">
+          <p className="text-xs text-muted-foreground">
+            Paper trading demo — prices are live from Yahoo Finance, no real
+            money is moved.
+          </p>
           <form onSubmit={handleSymbolSubmit} className="flex gap-2">
             <Input
               value={symbolInput}
@@ -177,12 +191,16 @@ export default function TradingPage() {
               symbol={symbol}
               period={period}
               points={points}
+              prediction={prediction}
+              predictionError={predictionError}
               onPeriodChange={handlePeriodChange}
               loading={chartLoading}
             />
           )}
         </CardContent>
       </Card>
+
+      <PredictionPanel />
 
       <div className="grid gap-4 md:grid-cols-2">
         <Card>
@@ -192,7 +210,7 @@ export default function TradingPage() {
           <CardContent className="flex flex-col gap-3">
             {accountError ? (
               <p className="text-sm text-red-600">
-                {accountError} — log in to access your mock account.
+                {accountError} — log in to access your account.
               </p>
             ) : !account ? (
               <p className="text-sm text-muted-foreground">Loading account…</p>
@@ -238,7 +256,7 @@ export default function TradingPage() {
                       {positions.length === 0 && (
                         <tr>
                           <td colSpan={6} className="py-3 text-muted-foreground">
-                            No positions yet — place your first mock trade.
+                            No positions yet — place your first trade.
                           </td>
                         </tr>
                       )}

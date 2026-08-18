@@ -33,6 +33,17 @@ export function resetAccount() {
   return api('/stock-assistant/account/reset', { method: 'POST' })
 }
 
+export function sendTransfer(to_email, amount) {
+  return api('/stock-assistant/transfer', {
+    method: 'POST',
+    body: JSON.stringify({ to_email, amount }),
+  })
+}
+
+export function getTransfers() {
+  return api('/stock-assistant/transfers')
+}
+
 export function getPriceSeries(symbol, period) {
   return api(
     `/stock-assistant/prices/${encodeURIComponent(symbol)}?period=${encodeURIComponent(period)}`

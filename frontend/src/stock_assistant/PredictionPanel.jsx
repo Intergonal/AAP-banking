@@ -7,6 +7,13 @@ import {
   CardHeader,
   CardTitle,
 } from '../components/ui/card.jsx'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../components/ui/select.jsx'
 import { runPrediction } from './api.js'
 
 const TICKERS = ['AAPL', 'AMZN', 'GOOG', 'MSFT']
@@ -42,17 +49,18 @@ export default function PredictionPanel() {
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center gap-2">
-          <select
-            value={ticker}
-            onChange={(e) => setTicker(e.target.value)}
-            className="h-8 rounded-lg border bg-background px-2.5 text-sm"
-          >
-            {TICKERS.map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
-            ))}
-          </select>
+          <Select value={ticker} onValueChange={setTicker}>
+            <SelectTrigger className="w-36">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {TICKERS.map((t) => (
+                <SelectItem key={t} value={t}>
+                  {t}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Button onClick={handleRun} disabled={loading}>
             {loading ? 'Predicting…' : 'Run prediction'}
           </Button>

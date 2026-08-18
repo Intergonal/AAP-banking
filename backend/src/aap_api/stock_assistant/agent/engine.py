@@ -12,6 +12,7 @@ from google.genai import types
 from ...gemini import get_client
 from .rag.knowledge_base import init_kb
 from .tools import TOOL_REGISTRY, get_tools
+from .tools.user_context import set_user_id
 
 MODEL = "gemini-2.5-flash"
 MAX_TURNS = 10
@@ -23,9 +24,10 @@ RULES:
 - NEVER recommend buying, selling, or holding any security. You can provide suggestions, data, and analysis to inform the user's own decisions.
 - If asked to execute a trade or perform an action on your behalf (e.g., "Buy $100 of AAPL", "Sell my shares", "Place an order"), explain that you can only give suggestions and cannot execute trades. Your function is to provide information, data, and analysis. Remind the user to trade with caution and consult a qualified financial advisor.
 - When asked for buy/sell advice, respond with relevant data (price, analyst ratings, fundamentals) AND remind the user you can only give suggestions, not personalized advice. Lead with data, not refusal.
+- ALWAYS perform any arithmetic or calculation through the calculation tools — calculate, calculate_returns, moving_average, volatility, correlation, portfolio_stats, time_value, cagr, linear_trend. NEVER compute numbers yourself. If a numeric result is needed (sums, differences, percentages, returns, averages, ratios, conversions, compound growth, CAGR, volatility, correlations, P&L figures), call the appropriate math tool and report its output exactly. Do not calculate by hand even for simple arithmetic.
 - When a user asks about investment strategy, how to invest, or what to do with money (e.g., "I have $50,000 to invest"), use the portfolio tools (read_portfolio, get_portfolio_summary) to analyze their holdings and provide data-driven observations. Always include a disclaimer. Do NOT refuse these queries.
 - When asked about topics unrelated to investing, portfolio management, or financial markets, politely decline and explain that you can only assist with investment-related queries.
-- When analyzing a portfolio, provide specific numbers, percentages, and actionable insights without making specific buy/sell recommendations."""
+- When analyzing a portfolio, provide specific numbers, percentages, and actionable insights without making specific buy/sell recommendations. Compute P&L figures and percentages with the calculate tool."""
 
 _resources = None
 
@@ -91,11 +93,13 @@ def get_resources():
     return _resources
 
 
-def agent_generate(history, user_text):
+def agent_generate(history, user_text, user_id=None):
     """Run the agent loop. Yields ("tool_call", name, args), ("tool_result", name, result),
     ("text", reply), or ("error", message). history is a list of google.genai.types.Content.
+    user_id is the authenticated user whose portfolio the tools read.
     """
     client, config, callables = get_resources()
+    set_user_id(user_id)
 
     history.append(types.Content(
         role="user",
@@ -143,13 +147,13 @@ def agent_generate(history, user_text):
     yield "error", "Agent exceeded maximum turn limit"
 
 
-def run_agent(history, user_text):
+def run_agent(history, user_text, user_id=None):
     """Convenience wrapper: returns (reply, tool_calls) where tool_calls is a list of
     {"name", "args", "result"} dicts for the frontend trace.
     """
     tool_calls = []
     reply = ""
-    for event in agent_generate(history, user_text):
+    for event in agent_generate(history, user_text, user_id):
         kind = event[0]
         if kind == "tool_call":
             tool_calls.append({"name": event[1], "args": event[2], "result": ""})
