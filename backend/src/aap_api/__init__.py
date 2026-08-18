@@ -3,6 +3,7 @@ from flask_cors import CORS
 
 from .routes import blueprints
 from .schema import init_db
+from .ticket_schema import init_tickets_db
 
 
 def create_app() -> Flask:
@@ -17,5 +18,6 @@ def create_app() -> Flask:
         app.register_blueprint(blueprint)
 
     init_db()
+    init_tickets_db()
 
     return app
