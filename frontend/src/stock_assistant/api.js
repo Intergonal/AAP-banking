@@ -7,10 +7,10 @@ export function sendChat(message, history) {
   })
 }
 
-export function runPrediction(ticker) {
+export function runPrediction(ticker, steps = 1) {
   return api('/stock-assistant/predict', {
     method: 'POST',
-    body: JSON.stringify({ ticker }),
+    body: JSON.stringify({ ticker, steps }),
   })
 }
 

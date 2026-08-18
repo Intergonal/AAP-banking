@@ -31,8 +31,10 @@ export default function TradingPage() {
   const [points, setPoints] = useState([])
   const [chartLoading, setChartLoading] = useState(false)
   const [chartError, setChartError] = useState('')
-  const [prediction, setPrediction] = useState(null)
+  const [predictedBars, setPredictedBars] = useState([])
   const [predictionError, setPredictionError] = useState('')
+  const [lstmEnabled, setLstmEnabled] = useState(false)
+  const [lstmSteps, setLstmSteps] = useState(3)
 
   const [quote, setQuote] = useState(null)
   const [account, setAccount] = useState(null)
@@ -54,11 +56,12 @@ export default function TradingPage() {
   }
 
   async function loadPrediction(sym, per) {
-    setPrediction(null)
+    setPredictedBars([])
     setPredictionError('')
-    if (per !== '5m' || !MODEL_TICKERS.includes(sym)) return
+    if (!lstmEnabled || per !== '5m' || !MODEL_TICKERS.includes(sym)) return
     try {
-      setPrediction(await runPrediction(sym))
+      const result = await runPrediction(sym, lstmSteps)
+      setPredictedBars(result.forecast || [])
     } catch (err) {
       setPredictionError(err.message)
     }
@@ -91,6 +94,11 @@ export default function TradingPage() {
   useEffect(() => {
     loadAccount()
   }, [])
+
+  useEffect(() => {
+    loadPrediction(symbol, period)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lstmEnabled, lstmSteps])
 
   useEffect(() => {
     loadChart(symbol, period)
@@ -195,10 +203,14 @@ export default function TradingPage() {
               symbol={symbol}
               period={period}
               points={points}
-              prediction={prediction}
+              predictedBars={predictedBars}
               predictionError={predictionError}
               onPeriodChange={handlePeriodChange}
               loading={chartLoading}
+              lstmEnabled={lstmEnabled}
+              lstmSteps={lstmSteps}
+              onLstmEnabledChange={setLstmEnabled}
+              onLstmStepsChange={setLstmSteps}
             />
           )}
         </CardContent>

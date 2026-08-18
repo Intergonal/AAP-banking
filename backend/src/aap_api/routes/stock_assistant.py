@@ -1,5 +1,6 @@
 import psycopg
 import yfinance as yf
+import pandas as pd
 from decimal import Decimal
 from flask import Blueprint, jsonify, request
 from google.genai import types
@@ -85,6 +86,28 @@ def quote(symbol):
         return jsonify({"error": f"could not fetch quote for {symbol}: {e}"}), 502
 
 
+def _synthetic_bar(prev, recent, probability):
+    """Build the next simulated 5-minute bar from recent volatility and model confidence."""
+    direction = "UP" if probability > 0.5 else "DOWN"
+    confidence = probability if direction == "UP" else 1.0 - probability
+    recent = recent.tail(10)
+    mean_move = float((recent["close"] - recent["open"]).mean())
+    avg_body = float((recent["close"] - recent["open"]).abs().mean())
+    delta = max(abs(mean_move), avg_body) * (0.6 + confidence)
+    open_ = float(prev["close"])
+    close_ = open_ + delta if direction == "UP" else open_ - delta
+    return {
+        "datetime": prev["datetime"] + pd.Timedelta(minutes=5),
+        "open": open_,
+        "high": max(open_, close_) + delta * 0.25,
+        "low": min(open_, close_) - delta * 0.25,
+        "close": close_,
+        "probability": probability,
+        "direction": direction,
+        "confidence": confidence,
+    }
+
+
 @stock_assistant.post("/predict")
 def predict():
     data = request.get_json(silent=True) or {}
@@ -93,6 +116,12 @@ def predict():
         return jsonify({
             "error": f"ticker must be one of {', '.join(MODEL_TICKERS)}"
         }), 400
+    try:
+        steps = int(data.get("steps", 3))
+    except (TypeError, ValueError):
+        return jsonify({"error": "steps must be an integer between 1 and 5"}), 400
+    if not 1 <= steps <= 5:
+        return jsonify({"error": "steps must be between 1 and 5"}), 400
 
     try:
         bars = fetch_5m_bars(ticker)
@@ -102,30 +131,58 @@ def predict():
     if bars.empty:
         return jsonify({"error": f"no market data available for {ticker}"}), 502
 
+    current = bars.copy()
+    forecast = []
     try:
-        sequence = build_sequence(bars, ticker)
+        for _ in range(steps):
+            sequence = build_sequence(current, ticker)
+            result = hub_model.predict(sequence)
+            probabilities = result.get("probabilities") or []
+            if not probabilities:
+                return jsonify({"error": "model returned no probabilities"}), 502
+            probability = float(probabilities[0])
+            bar = _synthetic_bar(current.iloc[-1], current, probability)
+            forecast.append(bar)
+            current = pd.concat(
+                [
+                    current,
+                    pd.DataFrame([{
+                        "datetime": bar["datetime"],
+                        "open": bar["open"],
+                        "high": bar["high"],
+                        "low": bar["low"],
+                        "close": bar["close"],
+                    }]),
+                ],
+                ignore_index=True,
+            )
+    except hub_model.ModelUnavailableError as e:
+        return jsonify({"error": str(e)}), 503
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
 
-    try:
-        result = hub_model.predict(sequence)
-        probabilities = result.get("probabilities") or []
-        if not probabilities:
-            return jsonify({"error": "model returned no probabilities"}), 502
-        probability = float(probabilities[0])
-    except hub_model.ModelUnavailableError as e:
-        return jsonify({"error": str(e)}), 503
-
-    direction = "UP" if probability > 0.5 else "DOWN"
-    confidence = probability if direction == "UP" else 1.0 - probability
-
+    first = forecast[0]
     return jsonify({
         "ticker": ticker,
         "price": round(float(bars["close"].iloc[-1]), 2),
         "datetime": bars["datetime"].iloc[-1].isoformat(),
-        "direction": direction,
-        "probability": round(probability, 4),
-        "confidence": round(confidence, 4),
+        "direction": first["direction"],
+        "probability": round(first["probability"], 4),
+        "confidence": round(first["confidence"], 4),
+        "steps": steps,
+        "forecast": [
+            {
+                "datetime": b["datetime"].isoformat(),
+                "open": round(b["open"], 4),
+                "high": round(b["high"], 4),
+                "low": round(b["low"], 4),
+                "close": round(b["close"], 4),
+                "probability": round(b["probability"], 4),
+                "direction": b["direction"],
+                "confidence": round(b["confidence"], 4),
+            }
+            for b in forecast
+        ],
     })
 
 

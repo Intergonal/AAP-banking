@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { BrainCircuit } from 'lucide-react'
 import {
   CandlestickSeries,
   ColorType,
@@ -6,6 +7,19 @@ import {
   createSeriesMarkers,
 } from 'lightweight-charts'
 import { cn } from '@/lib/utils'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import {
+  Popover,
+  PopoverContent,
+  PopoverDescription,
+  PopoverHeader,
+  PopoverTitle,
+  PopoverTrigger,
+} from '@/components/ui/popover'
+import { Switch } from '@/components/ui/switch'
+
+const MODEL_TICKERS = ['AAPL', 'AMZN', 'GOOG', 'MSFT']
 
 const PERIODS = [
   { value: '1m', label: '1m' },
@@ -121,28 +135,21 @@ function formatTick(time, period) {
   })
 }
 
-function buildPredictedCandle(candles, prediction) {
-  if (!candles.length || !prediction) return null
-  const last = candles[candles.length - 1]
-  const recent = candles.slice(-10)
-  const meanMove = recent.reduce((sum, c) => sum + (c.close - c.open), 0) / recent.length
-  const avgBody =
-    recent.reduce((sum, c) => sum + Math.abs(c.close - c.open), 0) / recent.length
-  const delta = Math.max(Math.abs(meanMove), avgBody) * (0.6 + prediction.confidence)
-
-  const up = prediction.direction === 'UP'
-  const open = last.close
-  const close = up ? open + delta : open - delta
-  return {
-    time: toSeconds(last.datetime) + 5 * 60,
-    open,
-    high: Math.max(open, close) + delta * 0.25,
-    low: Math.min(open, close) - delta * 0.25,
-    close,
-    predicted: true,
-    direction: prediction.direction,
-    confidence: prediction.confidence,
-  }
+function buildPredictedCandles(forecast) {
+  if (!forecast?.length) return []
+  return forecast
+    .map((f, i) => ({
+      time: toSeconds(f.datetime),
+      open: f.open,
+      high: f.high,
+      low: f.low,
+      close: f.close,
+      predicted: true,
+      step: i + 1,
+      direction: f.direction,
+      confidence: f.confidence,
+    }))
+    .filter((c) => c.time > 0)
 }
 
 function formatLabel(datetime, period) {
@@ -234,10 +241,14 @@ export default function PriceChart({
   symbol,
   period,
   points,
-  prediction,
+  predictedBars,
   predictionError,
   onPeriodChange,
   loading,
+  lstmEnabled,
+  lstmSteps,
+  onLstmEnabledChange,
+  onLstmStepsChange,
 }) {
   const containerRef = useRef(null)
   const chartRef = useRef(null)
@@ -249,7 +260,7 @@ export default function PriceChart({
   const loadedCountRef = useRef(INITIAL_CANDLES)
   const loadingRef = useRef(false)
   const initialFitDoneRef = useRef(false)
-  const predictionRef = useRef(prediction)
+  const predictionRef = useRef([])
   const applyWindowRef = useRef(null)
   const gapsRef = useRef([])
   const intervalRef = useRef(5 * 60)
@@ -262,8 +273,8 @@ export default function PriceChart({
   }, [period])
 
   useEffect(() => {
-    predictionRef.current = prediction
-  }, [prediction])
+    predictionRef.current = predictedBars || []
+  }, [predictedBars])
 
   useEffect(() => {
     pointsRef.current = (points || []).filter((p) => toSeconds(p.datetime) > 0)
@@ -352,16 +363,18 @@ export default function PriceChart({
       const up = d.close >= d.open
       const color = up ? 'var(--chart-2)' : 'var(--destructive)'
       const isPred = typeof d.predicted === 'boolean' && d.predicted
-      const label = isPred
-        ? new Date((d.time + 5 * 60) * 1000)
-        : new Date(d.time * 1000)
+      const label = new Date(d.time * 1000)
       const rows = isPred
         ? `
             <div class="grid grid-cols-2 gap-x-4 gap-y-0.5">
-              <span class="text-muted-foreground">Predicted (LSTM)</span>
+              <span class="text-muted-foreground">Predicted (LSTM) · step ${d.step}</span>
               <span style="color:${color}">${d.direction === 'UP' ? '▲ UP' : '▼ DOWN'}</span>
               <span class="text-muted-foreground">Confidence</span>
               <span>${(d.confidence * 100).toFixed(1)}%</span>
+              <span class="text-muted-foreground">Open</span><span>$${d.open.toFixed(2)}</span>
+              <span class="text-muted-foreground">High</span><span>$${d.high.toFixed(2)}</span>
+              <span class="text-muted-foreground">Low</span><span>$${d.low.toFixed(2)}</span>
+              <span class="text-muted-foreground">Close</span><span style="color:${color}">$${d.close.toFixed(2)}</span>
             </div>`
         : `
             <div class="grid grid-cols-2 gap-x-4 gap-y-0.5">
@@ -422,28 +435,27 @@ export default function PriceChart({
         bars.push(bar)
         prevTime = t
       }
-      const predicted = buildPredictedCandle(real, predictionRef.current)
+      const predicted = buildPredictedCandles(predictionRef.current)
 
-      let marker = null
-      if (predicted) {
-        const baseColor = predicted.direction === 'UP' ? upColor : downColor
+      const predMarkers = predicted.map((p) => ({
+        time: p.time,
+        position: p.direction === 'UP' ? 'belowBar' : 'aboveBar',
+        color: p.direction === 'UP' ? upColor : downColor,
+        shape: p.direction === 'UP' ? 'arrowUp' : 'arrowDown',
+        text: `LSTM ${p.step}`,
+      }))
+      for (const p of predicted) {
+        const baseColor = p.direction === 'UP' ? upColor : downColor
         bars.push({
-          ...predicted,
+          ...p,
           color: withAlpha(baseColor, 0.35),
           borderColor: withAlpha(baseColor, 0.6),
           wickColor: withAlpha(baseColor, 0.5),
         })
-        marker = {
-          time: predicted.time,
-          position: 'aboveBar',
-          color: predicted.direction === 'UP' ? upColor : downColor,
-          shape: predicted.direction === 'UP' ? 'arrowUp' : 'arrowDown',
-          text: `LSTM ${predicted.direction} ${(predicted.confidence * 100).toFixed(0)}%`,
-        }
       }
 
       series.setData(bars.sort((a, b) => a.time - b.time))
-      markers.setMarkers(marker ? [marker] : [])
+      markers.setMarkers(predMarkers)
       chart.timeScale().applyOptions({ timeVisible: periodRef.current !== '1d' })
     }
     applyWindowRef.current = applyWindow
@@ -492,7 +504,6 @@ export default function PriceChart({
   }, [])
 
   useEffect(() => {
-    predictionRef.current = prediction
     const chart = chartRef.current
     if (!chart) return
     gapPrimitiveRef.current?.setColor(
@@ -504,7 +515,12 @@ export default function PriceChart({
       chart.timeScale().fitContent()
       initialFitDoneRef.current = true
     }
-  }, [points, prediction, period, themeTick])
+  }, [points, predictedBars, period, themeTick])
+
+  const lastPred = predictedBars?.length
+    ? predictedBars[predictedBars.length - 1]
+    : null
+  const lstmApplicable = period === '5m' && MODEL_TICKERS.includes(symbol)
 
   return (
     <div className="flex flex-col gap-2">
@@ -512,26 +528,26 @@ export default function PriceChart({
         <p className="text-sm font-medium">
           {symbol} · Candles
           {loading && <span className="ml-2 text-xs text-muted-foreground">loading…</span>}
-          {period === '5m' && !loading && (
+          {lstmEnabled && period === '5m' && !loading && (
             <span
               className={cn(
                 'ml-2 text-xs',
-                prediction
+                lastPred
                   ? 'text-muted-foreground'
                   : predictionError
                     ? 'text-destructive/80'
                     : 'text-muted-foreground/60'
               )}
             >
-              {prediction
-                ? `LSTM predicts ${prediction.direction} (${(prediction.confidence * 100).toFixed(0)}%)`
+              {lastPred
+                ? `LSTM predicts ${lastPred.direction} (${(lastPred.confidence * 100).toFixed(0)}%) · ${predictedBars.length} steps`
                 : predictionError
                   ? 'LSTM prediction unavailable'
                   : ''}
             </span>
           )}
         </p>
-        <div className="flex gap-1">
+        <div className="flex items-center gap-1">
           {PERIODS.map((p) => (
             <button
               key={p.value}
@@ -546,6 +562,62 @@ export default function PriceChart({
               {p.label}
             </button>
           ))}
+          <Popover>
+            <PopoverTrigger
+              className={cn(
+                'flex h-7 items-center gap-1 rounded-md px-2.5 text-xs font-medium transition-colors outline-none',
+                lstmEnabled
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-muted text-muted-foreground hover:bg-muted/70'
+              )}
+            >
+              <BrainCircuit className="size-3.5" />
+              LSTM
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-64">
+              <PopoverHeader>
+                <PopoverTitle className="flex items-center gap-1.5">
+                  <BrainCircuit className="size-3.5" />
+                  LSTM prediction
+                </PopoverTitle>
+                <PopoverDescription>
+                  Recursively forecast up to 5 bars ahead and overlay them on the chart.
+                </PopoverDescription>
+              </PopoverHeader>
+              <div className="flex items-center justify-between gap-2">
+                <Label htmlFor="lstm-enabled" className="text-sm">
+                  Enabled
+                </Label>
+                <Switch
+                  id="lstm-enabled"
+                  checked={lstmEnabled}
+                  onCheckedChange={onLstmEnabledChange}
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="lstm-steps" className="text-sm">
+                  Max steps
+                </Label>
+                <Input
+                  id="lstm-steps"
+                  type="number"
+                  min="1"
+                  max="5"
+                  value={lstmSteps}
+                  onChange={(e) => {
+                    const v = parseInt(e.target.value, 10)
+                    if (Number.isFinite(v) && v >= 1 && v <= 5) onLstmStepsChange(v)
+                  }}
+                  className="h-8"
+                />
+              </div>
+              {!lstmApplicable && (
+                <p className="text-xs text-muted-foreground">
+                  Only available on 5m charts for {MODEL_TICKERS.join(', ')}.
+                </p>
+              )}
+            </PopoverContent>
+          </Popover>
         </div>
       </div>
       <div ref={containerRef} className="relative h-80 w-full" />
