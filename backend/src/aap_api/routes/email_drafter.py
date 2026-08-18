@@ -1,8 +1,11 @@
 import os
+import smtplib
+import markdown
 from flask import Blueprint, jsonify, request
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
+from email.message import EmailMessage
 
 load_dotenv()
 client = genai.Client()
@@ -11,8 +14,7 @@ email_drafter = Blueprint(
     "email_drafter", __name__, url_prefix="/api/email-drafter"
 )
 
-# The strict corporate configuration we defined earlier
-corporate_config = types.GenerateContentConfig(
+config = types.GenerateContentConfig(
     temperature=0.5,
     top_p=0.8,
     top_k=40
@@ -63,7 +65,7 @@ def draft():
         response = client.models.generate_content(
             model='gemini-3.5-flash',
             contents=system_prompt,
-            config=corporate_config
+            config=config
         )
         return jsonify({"draft": response.text})
         
@@ -107,9 +109,53 @@ def iterate():
         response = client.models.generate_content(
             model='gemini-3.5-flash',
             contents=prompt,
-            config=corporate_config
+            config=config
         )
         return jsonify({"new_draft": response.text})
         
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+    
+@email_drafter.post("/send")
+def send_email():
+    data = request.get_json(silent=True) or {}
+    recipient = data.get("to")
+    subject = data.get("subject", "Bankly Customer Support Update")
+    body = data.get("body")
+
+    # Basic validation
+    if not recipient or not body:
+        return jsonify({"error": "Missing recipient or email body"}), 400
+
+    # Load credentials from .env
+    sender_email = os.getenv("MAIL_USERNAME")
+    sender_password = os.getenv("MAIL_APP_PASSWORD")
+
+    if not sender_email or not sender_password:
+        return jsonify({"error": "Server email credentials are not configured."}), 500
+
+    try:
+        # Convert the Gemini Markdown string into HTML
+        html_body = markdown.markdown(body)
+
+        # Construct the email object
+        msg = EmailMessage()
+        msg["Subject"] = subject
+        msg["From"] = sender_email
+        msg["To"] = recipient
+
+        # Set the plain text version first (acts as a fallback)
+        msg.set_content(body)
+        
+        # Attach the formatted HTML version
+        msg.add_alternative(html_body, subtype='html')
+
+        # Sending the email via gmail's server
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(sender_email, sender_password)
+            server.send_message(msg)
+
+        return jsonify({"status": "success", "message": f"Email successfully sent to {recipient}"})
+        
+    except Exception as e:
+        return jsonify({"error": f"Failed to send email: {str(e)}"}), 500
