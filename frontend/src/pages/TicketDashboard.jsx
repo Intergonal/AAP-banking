@@ -174,7 +174,7 @@ export default function TicketDashboard() {
       setSendSuccess(true);
       fetchTickets(); // Refresh the queue on the left
       
-      // NEW: Wait 1.5 seconds to show the success message, then close the workspace
+      // Setting a timeout so that the status messages can be seen
       setTimeout(() => {
         setActiveTicket(null);
         setAnalysis(null);
@@ -264,7 +264,7 @@ export default function TicketDashboard() {
           </div>
         ) : (
           <div className="animate-in fade-in duration-300">
-            <h2 className="text-2xl font-bold mb-6">Support Copilot Workspace</h2>
+            <h2 className="text-2xl font-bold mb-6">Ticket Workspace</h2>
             
             {/* Active Ticket Context */}
             <div className="bg-gray-900 border border-gray-800 rounded-lg p-5 mb-6">

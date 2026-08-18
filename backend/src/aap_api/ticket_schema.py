@@ -4,7 +4,7 @@ from .db import get_conn_string
 CREATE_TICKETS_TABLE = """
 CREATE TABLE IF NOT EXISTS tickets (
     ticket_id BIGSERIAL PRIMARY KEY,
-    customer_email TEXT NOT NULL,
+    customer_email TEXT REFERENCES users(email) ON DELETE CASCADE,
     customer_query TEXT NOT NULL,
     intent TEXT,
     sentiment TEXT,

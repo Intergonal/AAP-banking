@@ -1,5 +1,10 @@
 import { useState } from 'react'
 import { api } from '../lib/api.js'
+import {
+    Mail,
+    CircleCheckBig,
+    CircleX
+} from 'lucide-react'
 
 export default function SubmitTicket() {
   const [email, setEmail] = useState('')
@@ -32,14 +37,14 @@ export default function SubmitTicket() {
         <p className="text-gray-400 mb-6">Describe your issue below and our team will get back to you.</p>
 
         {status.success && (
-          <div className="mb-6 p-4 bg-green-900/50 border border-green-500 text-green-400 rounded">
-            Ticket submitted successfully! We will email you soon.
+          <div className="inline-flex items-center justify-center gap-2 mb-6 p-4 bg-green-900/50 border border-green-500 text-green-400 rounded">
+            <CircleCheckBig/>Ticket submitted successfully! We will email you soon.
           </div>
         )}
 
         {status.error && (
-          <div className="mb-6 p-4 bg-red-900/50 border border-red-500 text-red-400 rounded">
-            {status.error}
+          <div className="inline-flex items-center justify-center gap-2 mb-6 p-4 bg-red-900/50 border border-red-500 text-red-400 rounded">
+            <CircleX/>{status.error}
           </div>
         )}
 
@@ -69,9 +74,9 @@ export default function SubmitTicket() {
           <button 
             type="submit"
             disabled={status.loading}
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded disabled:opacity-50 transition-colors"
+            className="inline-flex items-center justify-center gap-2 w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded disabled:opacity-50 transition-colors"
           >
-            {status.loading ? 'Submitting...' : 'Submit Ticket'}
+            {status.loading ? 'Submitting...' : <><Mail/> Send Ticket</>}
           </button>
         </form>
       </div>
