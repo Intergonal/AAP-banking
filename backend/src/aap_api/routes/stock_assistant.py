@@ -7,10 +7,11 @@ from google.genai import types
 from ..db import get_conn_string
 from ..stock_assistant.agent.rag import knowledge_base as kb
 from ..stock_assistant.agent.engine import run_agent
-from ..stock_assistant.ml import gateway
+from ..stock_assistant.ml import hub_model
 from ..stock_assistant.ml.preprocess import TICKERS, build_sequence, fetch_5m_bars
 from ..stock_assistant.trading import (
     execute_trade,
+    find_recipient,
     get_account,
     get_price,
     reset_account,
@@ -107,12 +108,12 @@ def predict():
         return jsonify({"error": str(e)}), 400
 
     try:
-        result = gateway.predict(sequence)
+        result = hub_model.predict(sequence)
         probabilities = result.get("probabilities") or []
         if not probabilities:
             return jsonify({"error": "model returned no probabilities"}), 502
         probability = float(probabilities[0])
-    except gateway.ModelUnavailableError as e:
+    except hub_model.ModelUnavailableError as e:
         return jsonify({"error": str(e)}), 503
 
     direction = "UP" if probability > 0.5 else "DOWN"
@@ -159,7 +160,6 @@ def _live_account(user_id):
     """Enrich the account with live prices and unrealized P&L."""
     account = get_account(user_id)
     total_value = Decimal(str(account["cash"]))
-    total_cost = Decimal("0")
     positions = []
     for pos in account["positions"]:
         try:
@@ -182,14 +182,10 @@ def _live_account(user_id):
         })
         if value is not None:
             total_value += value
-            total_cost += cost
-    total_pl = total_value - total_cost
     return {
         **account,
         "positions": positions,
         "total_value": round(float(total_value), 2),
-        "total_pl": round(float(total_pl), 2),
-        "total_pl_pct": round(float(total_pl / total_cost * 100), 2) if total_cost else None,
     }
 
 
@@ -234,6 +230,30 @@ def account_reset():
         return jsonify({"error": f"could not reset account: {e}"}), 503
 
 
+@stock_assistant.get("/search")
+def search_symbols():
+    q = request.args.get("q", "").strip()
+    if len(q) < 2:
+        return jsonify({"results": []})
+    try:
+        quotes = yf.Search(q, max_results=8).quotes
+    except Exception as e:
+        return jsonify({"error": f"could not search symbols: {e}"}), 502
+    results = []
+    for r in quotes:
+        symbol = r.get("symbol") if isinstance(r, dict) else getattr(r, "symbol", None)
+        if not symbol:
+            continue
+        if isinstance(r, dict):
+            name = r.get("longname") or r.get("shortname") or ""
+            exchange = r.get("exchDisp") or r.get("exchange") or ""
+        else:
+            name = getattr(r, "longname", None) or getattr(r, "shortname", None) or ""
+            exchange = getattr(r, "exchange", None) or ""
+        results.append({"symbol": symbol, "name": name, "exchange": exchange})
+    return jsonify({"results": results})
+
+
 @stock_assistant.get("/prices/<symbol>")
 def prices(symbol):
     period = request.args.get("period", "1mo")
@@ -249,6 +269,9 @@ def prices(symbol):
         return jsonify({"error": f"could not fetch price history for {symbol}: {e}"}), 502
     if df is None or df.empty:
         return jsonify({"error": f"no price history available for {symbol}"}), 404
+    df = df[~df.index.isna()]
+    df = df[~df.index.duplicated(keep="first")]
+    df = df.sort_index()
     points = [
         {
             "datetime": idx.to_pydatetime().isoformat(),
@@ -313,6 +336,18 @@ def transfers_list():
             for r in rows
         ]
     )
+
+
+@stock_assistant.get("/recipient")
+def recipient():
+    user = _auth_user()
+    if user is None:
+        return jsonify({"error": "unauthorized"}), 401
+    email = (request.args.get("email") or "").strip()
+    result = find_recipient(email)
+    if result is None:
+        return jsonify({"error": f"no user found with email {email}"}), 404
+    return jsonify(result)
 
 
 # ── Knowledge base management ───────────────────────────────────────

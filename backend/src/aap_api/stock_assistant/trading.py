@@ -252,6 +252,23 @@ def transfer_cash(from_user_id: int, to_email: str, amount) -> dict:
     }
 
 
+def find_recipient(to_email: str) -> dict | None:
+    """Look up a transfer recipient by email (for confirmation dialogs)."""
+    to_email = (to_email or "").strip().lower()
+    if not to_email:
+        return None
+    with psycopg.connect(get_conn_string()) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT name, email FROM users WHERE email = %s AND NOT disabled",
+                (to_email,),
+            )
+            row = cur.fetchone()
+    if row is None:
+        return None
+    return {"name": row[0], "email": row[1]}
+
+
 def reset_account(user_id: int) -> dict:
     """Reset the account to the starting state ($100k, no positions)."""
     ensure_account(user_id)

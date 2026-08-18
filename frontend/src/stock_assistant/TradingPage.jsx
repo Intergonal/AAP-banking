@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
+import { SearchIcon } from 'lucide-react'
 import { Button } from '../components/ui/button.jsx'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card.jsx'
 import { Input } from '../components/ui/input.jsx'
 import { Label } from '../components/ui/label.jsx'
 import { getAccount, getPriceSeries, getQuote, placeTrade, resetAccount, runPrediction } from './api.js'
 import PriceChart from './PriceChart.jsx'
-import PredictionPanel from './PredictionPanel.jsx'
+import SymbolSearchDialog from './SymbolSearchDialog.jsx'
 
 const MODEL_TICKERS = ['AAPL', 'AMZN', 'GOOG', 'MSFT']
 
@@ -25,7 +26,7 @@ function fmtSigned(v) {
 
 export default function TradingPage() {
   const [symbol, setSymbol] = useState('AAPL')
-  const [symbolInput, setSymbolInput] = useState('AAPL')
+  const [searchOpen, setSearchOpen] = useState(false)
   const [period, setPeriod] = useState('30m')
   const [points, setPoints] = useState([])
   const [chartLoading, setChartLoading] = useState(false)
@@ -92,15 +93,14 @@ export default function TradingPage() {
   }, [])
 
   useEffect(() => {
-    loadChart(symbolInput, period)
-    loadQuote(symbolInput)
+    loadChart(symbol, period)
+    loadQuote(symbol)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  function handleSymbolSubmit(e) {
-    e.preventDefault()
-    const sym = symbolInput.trim().toUpperCase()
-    if (!sym) return
+  function handleSelectSymbol(sym) {
+    setSearchOpen(false)
+    if (sym === symbol) return
     loadChart(sym, period)
     loadQuote(sym)
   }
@@ -157,18 +157,17 @@ export default function TradingPage() {
             Paper trading demo — prices are live from Yahoo Finance, no real
             money is moved.
           </p>
-          <form onSubmit={handleSymbolSubmit} className="flex gap-2">
-            <Input
-              value={symbolInput}
-              onChange={(e) => setSymbolInput(e.target.value.toUpperCase())}
-              placeholder="Ticker symbol, e.g. AAPL"
-              className="h-8 w-40"
-            />
-            <Button type="submit" variant="outline" className="h-8">
-              Load
-            </Button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setSearchOpen(true)}
+              className="flex h-8 w-44 items-center gap-2 rounded-md border border-input bg-background px-3 text-sm shadow-xs outline-none transition-colors hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <SearchIcon className="size-3.5 text-muted-foreground" data-icon="inline-start" />
+              <span className="truncate font-medium">{symbol}</span>
+            </button>
             {quote && (
-              <span className="self-center text-sm text-muted-foreground">
+              <span className="text-sm text-muted-foreground">
                 {quote.symbol}: {fmtMoney(quote.price)}{' '}
                 {quote.change_pct !== null && quote.change_pct !== undefined && (
                   <span
@@ -182,7 +181,12 @@ export default function TradingPage() {
                 )}
               </span>
             )}
-          </form>
+          </div>
+          <SymbolSearchDialog
+            open={searchOpen}
+            onOpenChange={setSearchOpen}
+            onSelect={handleSelectSymbol}
+          />
 
           {chartError ? (
             <p className="text-sm text-red-600">{chartError}</p>
@@ -200,8 +204,6 @@ export default function TradingPage() {
         </CardContent>
       </Card>
 
-      <PredictionPanel />
-
       <div className="grid gap-4 md:grid-cols-2">
         <Card>
           <CardHeader>
@@ -216,7 +218,7 @@ export default function TradingPage() {
               <p className="text-sm text-muted-foreground">Loading account…</p>
             ) : (
               <>
-                <div className="grid grid-cols-3 gap-2 text-sm">
+                <div className="grid grid-cols-2 gap-2 text-sm">
                   <div className="rounded-lg border p-2">
                     <p className="text-xs text-muted-foreground">Cash</p>
                     <p className="font-medium">{fmtMoney(account.cash)}</p>
@@ -224,19 +226,6 @@ export default function TradingPage() {
                   <div className="rounded-lg border p-2">
                     <p className="text-xs text-muted-foreground">Total value</p>
                     <p className="font-medium">{fmtMoney(account.total_value)}</p>
-                  </div>
-                  <div className="rounded-lg border p-2">
-                    <p className="text-xs text-muted-foreground">Total P&L</p>
-                    <p
-                      className={`font-medium ${
-                        account.total_pl >= 0 ? 'text-emerald-600' : 'text-red-600'
-                      }`}
-                    >
-                      {fmtSigned(account.total_pl)}
-                      {account.total_pl_pct !== null &&
-                        account.total_pl_pct !== undefined &&
-                        ` (${account.total_pl_pct >= 0 ? '+' : ''}${account.total_pl_pct}%)`}
-                    </p>
                   </div>
                 </div>
 

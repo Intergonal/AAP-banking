@@ -44,10 +44,18 @@ export function getTransfers() {
   return api('/stock-assistant/transfers')
 }
 
+export function getRecipient(email) {
+  return api(`/stock-assistant/recipient?email=${encodeURIComponent(email)}`)
+}
+
 export function getPriceSeries(symbol, period) {
   return api(
     `/stock-assistant/prices/${encodeURIComponent(symbol)}?period=${encodeURIComponent(period)}`
   )
+}
+
+export function searchSymbols(query) {
+  return api(`/stock-assistant/search?q=${encodeURIComponent(query)}`)
 }
 
 export function getKb() {

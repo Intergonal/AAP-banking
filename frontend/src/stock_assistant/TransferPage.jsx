@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { ArrowRight } from 'lucide-react'
 import { Button } from '../components/ui/button.jsx'
 import {
   Card,
@@ -7,9 +8,18 @@ import {
   CardHeader,
   CardTitle,
 } from '../components/ui/card.jsx'
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '../components/ui/dialog.jsx'
 import { Input } from '../components/ui/input.jsx'
 import { Label } from '../components/ui/label.jsx'
-import { getAccount, getTransfers, sendTransfer } from './api.js'
+import { useAuth } from '../context/AuthContext.jsx'
+import { getAccount, getRecipient, getTransfers, sendTransfer } from './api.js'
 
 function fmtMoney(v) {
   if (v === null || v === undefined) return '—'
@@ -29,6 +39,7 @@ function fmtDate(iso) {
 }
 
 export default function TransferPage() {
+  const { user } = useAuth()
   const [account, setAccount] = useState(null)
   const [accountError, setAccountError] = useState('')
   const [toEmail, setToEmail] = useState('')
@@ -36,6 +47,7 @@ export default function TransferPage() {
   const [transfers, setTransfers] = useState([])
   const [sending, setSending] = useState(false)
   const [message, setMessage] = useState(null)
+  const [confirming, setConfirming] = useState(null)
 
   async function loadAll() {
     try {
@@ -67,20 +79,38 @@ export default function TransferPage() {
       setMessage({ kind: 'error', text: 'Enter an amount greater than zero.' })
       return
     }
-    setSending(true)
     setMessage(null)
-    sendTransfer(toEmail.trim(), value)
+    getRecipient(toEmail.trim())
+      .then((receiver) =>
+        setConfirming({
+          email: toEmail.trim(),
+          value,
+          sender: { name: user?.name, email: user?.email },
+          receiver,
+        })
+      )
+      .catch((err) => setMessage({ kind: 'error', text: err.message }))
+  }
+
+  function confirmTransfer() {
+    if (!confirming) return
+    setSending(true)
+    sendTransfer(confirming.email, confirming.value)
       .then((result) => {
         setAccount(result.account)
         setToEmail('')
         setAmount('')
+        setConfirming(null)
         setMessage({
           kind: 'success',
           text: `Sent ${fmtMoney(result.amount)} to ${result.to_name} (${result.to_email}).`,
         })
         return getTransfers().then(setTransfers)
       })
-      .catch((err) => setMessage({ kind: 'error', text: err.message }))
+      .catch((err) => {
+        setConfirming(null)
+        setMessage({ kind: 'error', text: err.message })
+      })
       .finally(() => setSending(false))
   }
 
@@ -137,6 +167,45 @@ export default function TransferPage() {
               </Button>
             </form>
           )}
+          <Dialog
+            open={confirming !== null}
+            onOpenChange={(open) => {
+              if (!open && !sending) setConfirming(null)
+            }}
+          >
+            <DialogContent showCloseButton={!sending}>
+              <DialogHeader>
+                <DialogTitle>Confirm Details</DialogTitle>
+              </DialogHeader>
+              <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+                <div className="flex flex-col items-center gap-0.5 text-center">
+                  <p className="text-sm font-medium">{confirming?.sender?.name}</p>
+                  <p className="max-w-full text-xs text-muted-foreground break-all">
+                    {confirming?.sender?.email}
+                  </p>
+                </div>
+                <ArrowRight className="size-4 shrink-0 text-muted-foreground" />
+                <div className="flex flex-col items-center gap-0.5 text-center">
+                  <p className="text-sm font-medium">{confirming?.receiver?.name}</p>
+                  <p className="max-w-full text-xs text-muted-foreground break-all">
+                    {confirming?.receiver?.email}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center justify-between gap-2 rounded-lg border bg-muted/50 px-3 py-2">
+                <span className="text-sm text-muted-foreground">Amount</span>
+                <span className="text-base font-semibold">{fmtMoney(confirming?.value)}</span>
+              </div>
+              <DialogFooter>
+                <DialogClose render={<Button variant="outline" disabled={sending} />}>
+                  Cancel
+                </DialogClose>
+                <Button onClick={confirmTransfer} disabled={sending}>
+                  {sending ? 'Sending…' : 'Confirm'}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </CardContent>
       </Card>
 

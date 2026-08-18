@@ -123,17 +123,12 @@ def get_portfolio_summary() -> str:
     if total_value == 0:
         return "Could not calculate portfolio summary — prices unavailable."
 
-    total_gain = total_value - total_cost
-    sign = "+" if total_gain >= 0 else ""
-
     lines = [
         "Portfolio Summary (source: Yahoo Finance)",
         f"  Total Cost:  ${total_cost:.2f}",
         f"  Cash:        ${float(cash):,.2f}",
         f"  Total Value: ${total_value:.2f}",
     ]
-    if total_cost:
-        lines.append(f"  Total P&L:   ${total_gain:.2f} ({sign}{total_gain / total_cost * 100:.1f}%)")
     lines.append("")
     lines.append("Holdings:")
     lines.extend(details)

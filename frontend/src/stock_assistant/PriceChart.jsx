@@ -15,8 +15,11 @@ const PERIODS = [
   { value: '1d', label: '1D' },
 ]
 
-const INITIAL_CANDLES = 90
+const INITIAL_CANDLES = 30
 const PREPEND_CHUNK = 60
+const WHITESPACE_COUNT = 3
+const GAP_ALPHA = 0.35
+const WEEKEND_GAP_SECONDS = 24 * 3600
 
 function cssVar(name, fallback) {
   return (
@@ -84,6 +87,40 @@ function toSeconds(datetime) {
   return Number.isNaN(ms) ? 0 : Math.floor(ms / 1000)
 }
 
+function computeGaps(points) {
+  const gaps = []
+  for (let i = 1; i < points.length; i++) {
+    const prev = toSeconds(points[i - 1].datetime)
+    const curr = toSeconds(points[i].datetime)
+    if (curr - prev > WEEKEND_GAP_SECONDS) gaps.push({ prev })
+  }
+  return gaps
+}
+
+function computeInterval(points) {
+  const deltas = []
+  for (let i = 1; i < points.length; i++) {
+    const d = toSeconds(points[i].datetime) - toSeconds(points[i - 1].datetime)
+    if (d > 0 && d <= WEEKEND_GAP_SECONDS) deltas.push(d)
+  }
+  if (!deltas.length) return 5 * 60
+  deltas.sort((a, b) => a - b)
+  return deltas[Math.floor(deltas.length / 2)]
+}
+
+function formatTick(time, period) {
+  const d = new Date(time * 1000)
+  if (period === '1d') {
+    return d.toLocaleDateString([], { month: 'short', day: 'numeric' })
+  }
+  return d.toLocaleDateString([], {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
 function buildPredictedCandle(candles, prediction) {
   if (!candles.length || !prediction) return null
   const last = candles[candles.length - 1]
@@ -122,6 +159,77 @@ function formatLabel(datetime, period) {
   })
 }
 
+class SessionGapRenderer {
+  constructor() {
+    this._bands = []
+    this._color = 'rgba(128, 128, 128, 0.2)'
+  }
+
+  setBands(bands) {
+    this._bands = bands
+  }
+
+  setColor(color) {
+    this._color = color
+  }
+
+  draw(target) {
+    const bands = this._bands
+    if (!bands.length) return
+    target.useMediaCoordinateSpace(({ context, mediaSize }) => {
+      context.fillStyle = this._color
+      for (const b of bands) {
+        if (b.right <= 0 || b.left >= mediaSize.width) continue
+        context.fillRect(b.left, 0, b.right - b.left, mediaSize.height)
+      }
+    })
+  }
+}
+
+class SessionGapPaneView {
+  constructor(renderer) {
+    this._renderer = renderer
+  }
+
+  renderer() {
+    return this._renderer
+  }
+}
+
+class SessionGapPrimitive {
+  constructor(chart, getGaps) {
+    this._chart = chart
+    this._getGaps = getGaps
+    this._renderer = new SessionGapRenderer()
+    this._paneView = new SessionGapPaneView(this._renderer)
+    this._views = [this._paneView]
+  }
+
+  updateAllViews() {
+    const ts = this._chart.timeScale()
+    const barSpacing = ts.options().barSpacing
+    const bands = this._getGaps()
+      .map(({ prev }) => {
+        const x = ts.timeToCoordinate(prev)
+        if (x === null) return null
+        return {
+          left: x + 0.5 * barSpacing,
+          right: x + (WHITESPACE_COUNT + 0.5) * barSpacing,
+        }
+      })
+      .filter(Boolean)
+    this._renderer.setBands(bands)
+  }
+
+  setColor(color) {
+    this._renderer.setColor(color)
+  }
+
+  paneViews() {
+    return this._views
+  }
+}
+
 export default function PriceChart({
   symbol,
   period,
@@ -138,22 +246,41 @@ export default function PriceChart({
   const tooltipRef = useRef(null)
   const periodRef = useRef(period)
   const pointsRef = useRef([])
-  const visibleCountRef = useRef(INITIAL_CANDLES)
+  const loadedCountRef = useRef(INITIAL_CANDLES)
+  const loadingRef = useRef(false)
   const initialFitDoneRef = useRef(false)
-  const loadMorePendingRef = useRef(false)
+  const predictionRef = useRef(prediction)
+  const applyWindowRef = useRef(null)
+  const gapsRef = useRef([])
+  const intervalRef = useRef(5 * 60)
+  const whitespaceTimesRef = useRef(new Set())
+  const gapPrimitiveRef = useRef(null)
   const [themeTick, setThemeTick] = useState(0)
-  const [visibleCount, setVisibleCount] = useState(INITIAL_CANDLES)
 
   useEffect(() => {
     periodRef.current = period
   }, [period])
 
   useEffect(() => {
-    pointsRef.current = points || []
+    predictionRef.current = prediction
+  }, [prediction])
+
+  useEffect(() => {
+    pointsRef.current = (points || []).filter((p) => toSeconds(p.datetime) > 0)
+    const total = pointsRef.current.length
+    loadedCountRef.current = Math.min(INITIAL_CANDLES, total)
     initialFitDoneRef.current = false
-    loadMorePendingRef.current = false
-    const total = (points || []).length
-    setVisibleCount(Math.min(INITIAL_CANDLES, total))
+    loadingRef.current = false
+    gapsRef.current = computeGaps(points || [])
+    const interval = computeInterval(points || [])
+    intervalRef.current = interval
+    const whitespaceTimes = new Set()
+    for (const gap of gapsRef.current) {
+      for (let k = 1; k <= WHITESPACE_COUNT; k++) {
+        whitespaceTimes.add(gap.prev + interval * k)
+      }
+    }
+    whitespaceTimesRef.current = whitespaceTimes
   }, [points])
 
   useEffect(() => {
@@ -182,6 +309,11 @@ export default function PriceChart({
         borderVisible: false,
         timeVisible: true,
         secondsVisible: false,
+        tickMarkFormatter: (time) => {
+          if (typeof time !== 'number') return String(time)
+          if (whitespaceTimesRef.current.has(time)) return ''
+          return formatTick(time, periodRef.current)
+        },
       },
       localization: {
         priceFormatter: (p) => `$${p.toFixed(2)}`,
@@ -250,28 +382,93 @@ export default function PriceChart({
     }
     chart.subscribeCrosshairMove(onCrosshair)
 
+    function applyWindow() {
+      const series = seriesRef.current
+      const chart = chartRef.current
+      const markers = markersRef.current
+      if (!series || !chart || !markers) return
+
+      const upColor = chartColor(cssVar('--chart-2'), '#22c55e')
+      const downColor = chartColor(cssVar('--destructive'), '#ef4444')
+      series.applyOptions({
+        upColor,
+        downColor,
+        borderUpColor: upColor,
+        borderDownColor: downColor,
+        wickUpColor: upColor,
+        wickDownColor: downColor,
+      })
+      chart.applyOptions({
+        layout: {
+          textColor: chartColor(cssVar('--foreground'), '#09090b'),
+          background: { type: ColorType.Solid, color: 'transparent' },
+        },
+      })
+
+      const slice = pointsRef.current.slice(-loadedCountRef.current)
+      const interval = intervalRef.current
+      const real = []
+      const bars = []
+      let prevTime = null
+      for (const p of slice) {
+        const t = toSeconds(p.datetime)
+        if (prevTime !== null && t - prevTime > WEEKEND_GAP_SECONDS) {
+          for (let k = 1; k <= WHITESPACE_COUNT; k++) {
+            bars.push({ time: prevTime + interval * k })
+          }
+        }
+        const bar = { time: t, open: p.open, high: p.high, low: p.low, close: p.close }
+        real.push(bar)
+        bars.push(bar)
+        prevTime = t
+      }
+      const predicted = buildPredictedCandle(real, predictionRef.current)
+
+      let marker = null
+      if (predicted) {
+        const baseColor = predicted.direction === 'UP' ? upColor : downColor
+        bars.push({
+          ...predicted,
+          color: withAlpha(baseColor, 0.35),
+          borderColor: withAlpha(baseColor, 0.6),
+          wickColor: withAlpha(baseColor, 0.5),
+        })
+        marker = {
+          time: predicted.time,
+          position: 'aboveBar',
+          color: predicted.direction === 'UP' ? upColor : downColor,
+          shape: predicted.direction === 'UP' ? 'arrowUp' : 'arrowDown',
+          text: `LSTM ${predicted.direction} ${(predicted.confidence * 100).toFixed(0)}%`,
+        }
+      }
+
+      series.setData(bars.sort((a, b) => a.time - b.time))
+      markers.setMarkers(marker ? [marker] : [])
+      chart.timeScale().applyOptions({ timeVisible: periodRef.current !== '1d' })
+    }
+    applyWindowRef.current = applyWindow
+
     function onVisibleRange(range) {
       if (!range) return
+      if (!initialFitDoneRef.current || loadingRef.current) return
       const total = pointsRef.current.length
-      const visible = visibleCountRef.current
-      if (range.from <= 1 && visible < total && !loadMorePendingRef.current) {
-        loadMorePendingRef.current = true
-        const prevRange = { from: range.from, to: range.to }
-        setVisibleCount((c) => {
-          const next = Math.min(c + PREPEND_CHUNK, total)
-          visibleCountRef.current = next
-          requestAnimationFrame(() => {
-            chart.timeScale().setVisibleLogicalRange({
-              from: prevRange.from + (next - c),
-              to: prevRange.to + (next - c),
-            })
-            loadMorePendingRef.current = false
-          })
-          return next
-        })
-      }
+      if (loadedCountRef.current >= total || range.from > 10) return
+      const prev = { from: range.from, to: range.to }
+      const added = Math.min(PREPEND_CHUNK, total - loadedCountRef.current)
+      loadedCountRef.current += added
+      loadingRef.current = true
+      applyWindow()
+      chart.timeScale().setVisibleLogicalRange({
+        from: prev.from + added,
+        to: prev.to + added,
+      })
+      loadingRef.current = false
     }
     chart.timeScale().subscribeVisibleLogicalRangeChange(onVisibleRange)
+
+    const primitive = new SessionGapPrimitive(chart, () => gapsRef.current)
+    gapPrimitiveRef.current = primitive
+    chart.panes()[0].attachPrimitive(primitive)
 
     const observer = new MutationObserver(() => setThemeTick((t) => t + 1))
     observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
@@ -280,6 +477,11 @@ export default function PriceChart({
       observer.disconnect()
       chart.unsubscribeCrosshairMove(onCrosshair)
       chart.timeScale().unsubscribeVisibleLogicalRangeChange(onVisibleRange)
+      if (gapPrimitiveRef.current) {
+        chart.panes()[0].detachPrimitive(gapPrimitiveRef.current)
+        gapPrimitiveRef.current = null
+      }
+      applyWindowRef.current = null
       tooltip.remove()
       chart.remove()
       chartRef.current = null
@@ -290,69 +492,19 @@ export default function PriceChart({
   }, [])
 
   useEffect(() => {
-    const series = seriesRef.current
+    predictionRef.current = prediction
     const chart = chartRef.current
-    const markers = markersRef.current
-    if (!series || !chart || !markers) return
-
-    const upColor = chartColor(cssVar('--chart-2'), '#22c55e')
-    const downColor = chartColor(cssVar('--destructive'), '#ef4444')
-    series.applyOptions({
-      upColor,
-      downColor,
-      borderUpColor: upColor,
-      borderDownColor: downColor,
-      wickUpColor: upColor,
-      wickDownColor: downColor,
-    })
-    chart.applyOptions({
-      layout: {
-        textColor: chartColor(cssVar('--foreground'), '#09090b'),
-        background: { type: ColorType.Solid, color: 'transparent' },
-      },
-    })
-
-    const real = pointsRef.current
-      .slice(-visibleCount)
-      .map((p) => ({
-        time: toSeconds(p.datetime),
-        open: p.open,
-        high: p.high,
-        low: p.low,
-        close: p.close,
-      }))
-    const predicted = buildPredictedCandle(real, prediction)
-
-    let bars = real
-    let marker = null
-    if (predicted) {
-      const baseColor = predicted.direction === 'UP' ? upColor : downColor
-      bars = [
-        ...real,
-        {
-          ...predicted,
-          color: withAlpha(baseColor, 0.35),
-          borderColor: withAlpha(baseColor, 0.6),
-          wickColor: withAlpha(baseColor, 0.5),
-        },
-      ]
-      marker = {
-        time: predicted.time,
-        position: 'aboveBar',
-        color: predicted.direction === 'UP' ? upColor : downColor,
-        shape: predicted.direction === 'UP' ? 'arrowUp' : 'arrowDown',
-        text: `LSTM ${predicted.direction} ${(predicted.confidence * 100).toFixed(0)}%`,
-      }
-    }
-
-    series.setData(bars)
-    markers.setMarkers(marker ? [marker] : [])
-    chart.timeScale().applyOptions({ timeVisible: period !== '1d' })
+    if (!chart) return
+    gapPrimitiveRef.current?.setColor(
+      withAlpha(chartColor(cssVar('--border'), 'rgba(128, 128, 128, 0.3)'), GAP_ALPHA)
+    )
+    gapPrimitiveRef.current?.updateAllViews()
+    applyWindowRef.current?.()
     if (!initialFitDoneRef.current) {
       chart.timeScale().fitContent()
       initialFitDoneRef.current = true
     }
-  }, [points, prediction, period, themeTick, visibleCount])
+  }, [points, prediction, period, themeTick])
 
   return (
     <div className="flex flex-col gap-2">
