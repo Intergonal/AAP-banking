@@ -1,6 +1,20 @@
 import { useState, useEffect } from 'react'
 import { api } from '../lib/api.js'
 import { marked } from 'marked'
+import {
+  RefreshCcw,
+  ChevronDown,
+  Sparkles,
+  Brain,
+  PenTool,
+  Ruler,
+  HeartHandshake,
+  Mail,
+  Eye,
+  Pencil,
+  MailCheck,
+  Check
+} from 'lucide-react'
 
 export default function TicketDashboard() {
   // Queue State
@@ -152,15 +166,22 @@ export default function TicketDashboard() {
         })
       });
       
-      // Close the ticket in the database
       await api('/tickets/close', {
         method: 'POST',
         body: JSON.stringify({ ticket_id: activeTicket.ticket_id })
       });
       
       setSendSuccess(true);
-      // Refresh the queue to remove the closed ticket
-      fetchTickets();
+      fetchTickets(); // Refresh the queue on the left
+      
+      // NEW: Wait 1.5 seconds to show the success message, then close the workspace
+      setTimeout(() => {
+        setActiveTicket(null);
+        setAnalysis(null);
+        setDraft('');
+        setIsEditing(false);
+      }, 2000);
+
     } catch (error) {
       console.error("Sending failed:", error);
     } finally {
@@ -176,26 +197,39 @@ export default function TicketDashboard() {
         <div className="flex justify-between items-center mb-6 relative">
           <h2 className="text-xl font-bold">Open Tickets</h2>
           
-          {/* Dropdown */}
-          <div className="relative">
+          {/* Controls Group */}
+          <div className="flex gap-2">
+            {/* Refresh Button */}
             <button 
-              onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-              className="px-3 py-1 text-sm bg-gray-800 border border-gray-700 rounded text-gray-300 hover:text-white"
+              onClick={fetchTickets}
+              disabled={loadingTickets}
+              title="Refresh Queue"
+              className="px-3 py-1 text-sm bg-gray-800 border border-gray-700 rounded text-gray-300 hover:text-white hover:bg-gray-700 disabled:opacity-50"
             >
-              Sort
+              <RefreshCcw size={20} strokeWidth={2}/>
             </button>
-            {isDropdownOpen && (
-              <div className="absolute right-0 mt-1 w-32 bg-gray-800 border border-gray-700 rounded shadow-lg z-10">
-                <button 
-                  onClick={() => { setSortOrder('oldest'); setIsDropdownOpen(false); }}
-                  className="w-full text-left px-4 py-2 text-sm hover:bg-gray-700 text-gray-200"
-                >Oldest First</button>
-                <button 
-                  onClick={() => { setSortOrder('newest'); setIsDropdownOpen(false); }}
-                  className="w-full text-left px-4 py-2 text-sm hover:bg-gray-700 text-gray-200"
-                >Newest First</button>
-              </div>
-            )}
+
+            {/* Sort Dropdown */}
+            <div className="relative">
+              <button 
+                onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                className="inline-flex items-center justify-center gap-1 py-1 px-2 text-sm bg-gray-800 border border-gray-700 rounded text-gray-300 hover:text-white"
+              >
+                Sort <ChevronDown size={15} strokeWidth={2}/>
+              </button>
+              {isDropdownOpen && (
+                <div className="absolute right-0 mt-1 w-32 bg-gray-800 border border-gray-700 rounded shadow-lg z-10">
+                  <button 
+                    onClick={() => { setSortOrder('oldest'); setIsDropdownOpen(false); }}
+                    className="w-full text-left px-4 py-2 text-sm hover:bg-gray-700 text-gray-200"
+                  >Oldest First</button>
+                  <button 
+                    onClick={() => { setSortOrder('newest'); setIsDropdownOpen(false); }}
+                    className="w-full text-left px-4 py-2 text-sm hover:bg-gray-700 text-gray-200"
+                  >Newest First</button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
@@ -237,13 +271,22 @@ export default function TicketDashboard() {
                <h3 className="text-sm font-medium text-gray-400 mb-2">Customer Query</h3>
                <p className="text-lg text-gray-200 mb-4 bg-gray-950 p-4 rounded border border-gray-800">"{activeTicket.customer_query}"</p>
                
-               <button 
-                onClick={processTicket}
-                disabled={loadingStep !== null}
-                className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded disabled:opacity-50 transition-colors"
-              >
-                {loadingStep === 'analyzing' ? '🧠 Classifying...' : loadingStep === 'drafting' ? '✍️ Drafting...' : '🚀 Process Ticket'}
-              </button>
+               {/* Only show the button if no data exists yet */}
+               {!(analysis || draft) && (
+                 <button 
+                  onClick={processTicket}
+                  disabled={loadingStep !== null}
+                  className="inline-flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded disabled:opacity-50 transition-colors"
+                 >
+                  {loadingStep === 'analyzing' ? (
+                        <><Brain size={18} /> Classifying...</>
+                    ) : loadingStep === 'drafting' ? (
+                        <><PenTool size={18} /> Drafting...</>
+                    ) : (
+                        <><Sparkles size={18} /> Process Ticket</>
+                    )}
+                 </button>
+               )}
             </div>
 
             {/* Results Grid */}
@@ -278,8 +321,12 @@ export default function TicketDashboard() {
                   <div className="flex justify-between items-center mb-4">
                     <h3 className="font-bold text-gray-300">Email Draft</h3>
                     {draft && loadingStep !== 'iterating' && (
-                      <button onClick={() => setIsEditing(!isEditing)} className="text-sm px-3 py-1 bg-gray-800 border border-gray-700 rounded text-gray-300 hover:text-white">
-                        {isEditing ? '👀 Preview' : '✏️ Edit'}
+                      <button onClick={() => setIsEditing(!isEditing)} className="inline-flex items-center justify-center gap-2 text-sm px-3 py-1 bg-gray-800 border border-gray-700 rounded text-gray-300 hover:text-white">
+                        {isEditing ? (
+                            <><Eye size={15} /> Preview</>
+                            ) : (
+                            <><Pencil size={15} /> Edit</>
+                            )}
                       </button>
                     )}
                   </div>
@@ -302,25 +349,25 @@ export default function TicketDashboard() {
                   {/* Iteration Controls */}
                   {!isEditing && draft && (
                     <div className="flex gap-2 pb-4 mb-4 border-b border-gray-700">
-                       <button onClick={() => iterateDraft('shorter')} disabled={loadingStep !== null} className="px-3 py-1.5 text-xs bg-gray-800 rounded hover:bg-gray-700 disabled:opacity-50">📏 Shorter</button>
-                       <button onClick={() => iterateDraft('empathetic')} disabled={loadingStep !== null} className="px-3 py-1.5 text-xs bg-gray-800 rounded hover:bg-gray-700 disabled:opacity-50">🤝 Empathetic</button>
-                       <button onClick={() => iterateDraft('regenerate')} disabled={loadingStep !== null} className="px-3 py-1.5 text-xs bg-gray-800 rounded hover:bg-gray-700 disabled:opacity-50">🔄 Regenerate</button>
+                       <button onClick={() => iterateDraft('shorter')} disabled={loadingStep !== null} className="px-3 py-1.5 text-xs bg-gray-800 rounded hover:bg-gray-700 disabled:opacity-50 inline-flex items-center justify-center gap-2 "><Ruler size={18}/> Shorter</button>
+                       <button onClick={() => iterateDraft('empathetic')} disabled={loadingStep !== null} className="px-3 py-1.5 text-xs bg-gray-800 rounded hover:bg-gray-700 disabled:opacity-50 inline-flex items-center justify-center gap-2"><HeartHandshake size={18}/> Empathetic</button>
+                       <button onClick={() => iterateDraft('regenerate')} disabled={loadingStep !== null} className="px-3 py-1.5 text-xs bg-gray-800 rounded hover:bg-gray-700 disabled:opacity-50 inline-flex items-center justify-center gap-2"><RefreshCcw size={18}/> Regenerate</button>
                     </div>
                   )}
 
                   {/* Send Action */}
                   <div className="flex items-center justify-between mt-auto pt-2">
                       {sendSuccess ? (
-                          <span className="text-green-500 font-bold">✅ Closed & Sent!</span>
+                          <span className="inline-flex items-center justify-center gap-2 text-green-500 font-bold"><Check size={15}/> Closed & Sent!</span>
                       ) : (
-                          <span className="text-gray-500 text-xs">Ready to deliver</span>
+                          <span className="inline-flex items-center justify-center gap-2 text-gray-500 text-xs"> <MailCheck size={15}/>Ready to deliver</span>
                       )}
                       <button 
                         onClick={sendEmail}
                         disabled={loadingStep !== null || sendSuccess || isEditing}
-                        className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-6 rounded disabled:opacity-50 transition-colors"
+                        className="inline-flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-6 rounded disabled:opacity-50 transition-colors"
                       >
-                        {loadingStep === 'sending' ? 'Sending...' : '✉️ Send & Close Ticket'}
+                        {loadingStep === 'sending' ? 'Sending...' : <><Mail size={18}/>Send Email & Close Ticket</>}
                       </button>
                   </div>
                 </div>
