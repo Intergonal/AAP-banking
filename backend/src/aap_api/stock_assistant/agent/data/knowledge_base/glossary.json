@@ -1,0 +1,82 @@
+[
+  {
+    "term": "PE Ratio",
+    "definition": "Price-to-Earnings ratio. A valuation metric calculated as current stock price divided by trailing 12-month earnings per share (EPS). A high PE may indicate overvaluation or expected growth; a low PE may indicate undervaluation or declining prospects."
+  },
+  {
+    "term": "EPS",
+    "definition": "Earnings Per Share. Net income divided by the number of outstanding shares. A key measure of a company's profitability. Trailing EPS uses past 12 months; Forward EPS uses analyst estimates for the coming year."
+  },
+  {
+    "term": "Market Capitalization",
+    "definition": "Total dollar value of a company's outstanding shares. Calculated as share price x number of shares. Classifications: Large-cap (>$10B), Mid-cap ($2B-$10B), Small-cap ($300M-$2B)."
+  },
+  {
+    "term": "Dividend Yield",
+    "definition": "Annual dividend payment divided by current stock price, expressed as a percentage. Indicates how much cash flow an investor receives per dollar invested. Example: A $100 stock paying $3/year has a 3% yield."
+  },
+  {
+    "term": "Beta",
+    "definition": "A measure of a stock's volatility relative to the overall market. Beta = 1 means the stock moves in line with the market. Beta > 1 means higher volatility (more risk/reward). Beta < 1 means lower volatility."
+  },
+  {
+    "term": "EBITDA",
+    "definition": "Earnings Before Interest, Taxes, Depreciation, and Amortization. A measure of a company's operating performance and profitability. Often used to compare profitability between companies and industries."
+  },
+  {
+    "term": "PEG Ratio",
+    "definition": "Price/Earnings to Growth ratio. PE ratio divided by the earnings growth rate. A PEG of 1 is considered fairly valued. Below 1 may be undervalued; above 1 may be overvalued. Accounts for growth, unlike PE alone."
+  },
+  {
+    "term": "52-Week Range",
+    "definition": "The highest and lowest prices at which a stock has traded over the past 52 weeks. Used to assess current price positioning. A stock near its 52-week high is considered strong; near its low may indicate weakness."
+  },
+  {
+    "term": "RSI",
+    "definition": "Relative Strength Index. A momentum oscillator measuring the speed and magnitude of price movements. Ranges from 0-100. Above 70 suggests overbought (potential pullback); below 30 suggests oversold (potential bounce)."
+  },
+  {
+    "term": "Moving Average",
+    "definition": "A widely used technical indicator that smooths price data. The 50-day and 200-day moving averages are key levels. A 'Golden Cross' (50-day crossing above 200-day) is bullish; a 'Death Cross' is bearish."
+  },
+  {
+    "term": "Diversification",
+    "definition": "A risk management strategy that spreads investments across different assets, sectors, or geographies to reduce exposure to any single risk. The goal is to improve risk-adjusted returns, not necessarily maximize absolute returns."
+  },
+  {
+    "term": "Volatility",
+    "definition": "A statistical measure of price dispersion over time. Higher volatility means larger price swings and greater risk. The VIX index measures implied volatility of the S&P 500, often called the 'fear gauge'."
+  },
+  {
+    "term": "Bull Market",
+    "definition": "A period of rising stock prices, typically defined as a 20% or more increase from recent lows, sustained over time. Characterized by investor confidence, strong economic indicators, and increased buying activity."
+  },
+  {
+    "term": "Bear Market",
+    "definition": "A period of declining stock prices, typically defined as a 20% or more decline from recent highs. Associated with economic downturns, pessimism, and selling pressure. Average bear market decline is ~33% over ~14 months."
+  },
+  {
+    "term": "Payout Ratio",
+    "definition": "The percentage of earnings paid out as dividends. Calculated as dividends per share divided by EPS. A lower ratio (e.g., 20-40%) suggests room for dividend growth. A very high ratio (>80%) may be unsustainable."
+  },
+  {
+    "term": "Sector",
+    "definition": "A broad classification grouping companies with similar business activities. Major sectors include Technology, Healthcare, Financials, Energy, Consumer Discretionary, Consumer Staples, Industrials, and Utilities."
+  },
+  {
+    "term": "Return on Equity (ROE)",
+    "definition": "Net income divided by shareholder's equity. Measures how efficiently a company uses investor capital to generate profits. Higher ROE (15-25%+) generally indicates a competitive advantage and efficient management."
+  },
+  {
+    "term": "Debt-to-Equity Ratio",
+    "definition": "Total liabilities divided by shareholder's equity. Measures financial leverage. A high D/E ratio indicates the company is funding growth with debt, which increases risk but can also amplify returns in good times."
+  },
+  {
+    "term": "Book Value",
+    "definition": "Total assets minus intangible assets and liabilities. Represents the theoretical value if a company were liquidated. Price-to-Book (P/B) ratio compares market value to book value. Under 1.0 can indicate undervaluation."
+  },
+  {
+    "term": "Compound Interest",
+    "definition": "Interest earned on both the initial principal and accumulated interest from prior periods. Albert Einstein called it the 'eighth wonder of the world.' Even small differences in annual returns compound into large differences over decades."
+  }
+]

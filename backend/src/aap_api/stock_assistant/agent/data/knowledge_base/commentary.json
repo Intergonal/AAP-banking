@@ -1,0 +1,50 @@
+[
+  {
+    "topic": "Dollar-Cost Averaging",
+    "content": "Dollar-cost averaging (DCA) is an investment strategy where you invest a fixed dollar amount at regular intervals regardless of price. This reduces the impact of volatility by buying more shares when prices are low and fewer when high. DCA removes the need for market timing and reduces emotional decision-making. It is particularly effective in volatile markets and for long-term investors."
+  },
+  {
+    "topic": "Portfolio Rebalancing",
+    "content": "Rebalancing is the process of realigning portfolio weights by selling overperforming assets and buying underperforming ones to maintain a target allocation. Common triggers include calendar-based (quarterly/annually) or threshold-based (when an asset class deviates by 5%+ from target). Rebalancing enforces 'buy low, sell high' discipline and manages risk."
+  },
+  {
+    "topic": "Value vs Growth Investing",
+    "content": "Value investing focuses on stocks trading below their intrinsic value (low PE, low P/B, high dividend yield). Growth investing targets companies with above-average revenue/earnings growth (high PE, low/no dividends, high reinvestment). Historically, value and growth cycles alternate in leadership. A barbell strategy combines both approaches."
+  },
+  {
+    "topic": "Market Cycles",
+    "content": "Markets move in cycles driven by economics, sentiment, and valuation. The typical cycle: Expansion (rising GDP, confidence) -> Peak (exuberance, high valuations) -> Contraction (falling GDP, fear) -> Trough (pessimism, low valuations) -> Recovery. Understanding where we are helps set appropriate expectations."
+  },
+  {
+    "topic": "Risk vs Return",
+    "content": "Risk and return are fundamentally linked. Higher potential returns come with higher risk of loss. The 'risk-free rate' (US Treasury bonds) is the baseline. Equity risk premium (stocks minus risk-free rate) compensates for equity risk. Diversification reduces unsystematic risk but cannot eliminate market risk."
+  },
+  {
+    "topic": "Earnings Season",
+    "content": "Four times a year, publicly traded companies report quarterly financial results. Earnings season significantly impacts stock prices as companies either meet, beat, or miss analyst expectations. Key metrics: revenue, EPS, guidance, margins. A 'beat and raise' (beat estimates and raise guidance) typically sends stocks higher."
+  },
+  {
+    "topic": "Inflation and Interest Rates",
+    "content": "Central banks use interest rates to manage inflation. Higher rates make borrowing more expensive, slowing economic activity and potentially lowering stock valuations (especially growth stocks whose future cash flows are discounted more). Lower rates stimulate borrowing and investment. Inflation erodes purchasing power and affects different sectors differently."
+  },
+  {
+    "topic": "Technical vs Fundamental Analysis",
+    "content": "Fundamental analysis evaluates a company's financial health, competitive position, and industry to determine intrinsic value. Technical analysis studies price patterns and volume to predict future movements. Many investors combine both: fundamentals for what to buy, technicals for when to buy. Neither approach is consistently superior."
+  },
+  {
+    "topic": "Tax-Loss Harvesting",
+    "content": "Selling investments at a loss to offset capital gains taxes. Losses can offset gains dollar-for-dollar, and up to $3,000/year can offset ordinary income. Unused losses carry forward. Be aware of wash-sale rules: you cannot repurchase the same or substantially identical security within 30 days before or after the sale."
+  },
+  {
+    "topic": "The Power of Dividends",
+    "content": "Dividends have historically contributed ~40% of total stock market returns over the long term. Reinvesting dividends (DRIP) compounds returns significantly. Dividend-paying stocks tend to be less volatile and provide income regardless of market conditions. Dividend growth signals management confidence in future earnings."
+  },
+  {
+    "topic": "Sector Rotation",
+    "content": "Different economic phases favor different sectors. Early expansion: Financials, Consumer Discretionary, Technology. Late expansion: Energy, Materials, Industrials. Contraction: Utilities, Healthcare, Consumer Staples (defensive). Recession: Government bonds, gold. Monitoring sector rotation provides clues about market participants' economic outlook."
+  },
+  {
+    "topic": "Behavioral Finance",
+    "content": "Investors are not always rational. Common biases include loss aversion (feeling losses more than gains), confirmation bias (seeking information that confirms existing beliefs), recency bias (overweighting recent events), and herd mentality (following the crowd). Awareness of these biases helps make better decisions."
+  }
+]
