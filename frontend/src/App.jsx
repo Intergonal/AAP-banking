@@ -9,6 +9,8 @@ import stockAssistantRoutes from './routes/stockAssistant.jsx'
 import intentClassifierRoutes from './routes/intentClassifier.jsx'
 import emailDrafterRoutes from './routes/emailDrafter.jsx'
 import adminRoutes from './routes/admin.jsx'
+import ticketDashboardRoutes from './routes/TicketDashboard.jsx'
+import submitTicketRoutes from './routes/submitTicket.jsx'
 
 const routes = [
   ...authRoutes,
@@ -25,6 +27,8 @@ const routes = [
       intentClassifierRoutes,
       emailDrafterRoutes,
       adminRoutes,
+      ticketDashboardRoutes,
+      submitTicketRoutes
     ],
   },
 ]

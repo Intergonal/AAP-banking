@@ -7,6 +7,8 @@ import {
   MessageSquare,
   Sparkles,
   TrendingUp,
+  MessageCircleQuestionMark,
+  LayoutDashboard
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import {
@@ -29,10 +31,12 @@ const FEATURE_ITEMS = [
   { to: '/stock-assistant/trading', label: 'Mock Trading', icon: TrendingUp },
   { to: '/intent-classifier', label: 'Intent Classifier', icon: Sparkles },
   { to: '/email-drafter', label: 'Email Drafter', icon: Mail },
+  { to: '/submit-ticket', label: 'Help', icon: MessageCircleQuestionMark },
 ]
 
 const ADMIN_ITEMS = [
   { to: '/admin/rag', label: 'RAG Management', icon: Database },
+  { to: 'ticket-dashboard', label: 'Customer Ticket Dashboard', icon: LayoutDashboard}
 ]
 
 function NavItem({ to, label, icon: Icon, end }) {
