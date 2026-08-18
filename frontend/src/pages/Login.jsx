@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, Navigate, useNavigate } from 'react-router-dom'
+import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -11,17 +11,20 @@ import {
 } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import ThemeToggle from '@/components/ThemeToggle'
 import { useAuth } from '@/context/AuthContext'
 
 export default function Login() {
   const { user, login } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
+  const from = location.state?.from?.pathname || '/'
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
-  if (user) return <Navigate to="/" replace />
+  if (user) return <Navigate to={from} replace />
 
   async function handleSubmit(event) {
     event.preventDefault()
@@ -29,7 +32,7 @@ export default function Login() {
     setSubmitting(true)
     try {
       await login(email, password)
-      navigate('/')
+      navigate(from, { replace: true })
     } catch (err) {
       setError(err.message)
     } finally {
@@ -39,6 +42,9 @@ export default function Login() {
 
   return (
     <div className="flex min-h-svh items-center justify-center p-4">
+      <div className="absolute right-4 top-4">
+        <ThemeToggle />
+      </div>
       <Card className="w-full max-w-sm">
         <CardHeader>
           <CardTitle>Log in</CardTitle>
