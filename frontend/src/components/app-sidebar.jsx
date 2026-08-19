@@ -6,11 +6,13 @@ import {
   LogOut,
   Mail,
   MessageSquare,
+  Shield,
   Sparkles,
   TrendingUp,
-  MessageCircleQuestionMark,
+MessageCircleQuestionMark,
   LayoutDashboard,
   Users,
+  UsersRound,
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import {
@@ -34,7 +36,9 @@ const FEATURE_ITEMS = [
   { to: '/stock-assistant/transfer', label: 'Transfer', icon: ArrowLeftRight },
   { to: '/intent-classifier', label: 'Intent Classifier', icon: Sparkles },
   { to: '/email-drafter', label: 'Email Drafter', icon: Mail },
-  { to: '/submit-ticket', label: 'Help', icon: MessageCircleQuestionMark },
+{ to: '/submit-ticket', label: 'Help', icon: MessageCircleQuestionMark },
+  { to: '/pii-redaction', label: 'PII Redaction', icon: Shield },
+  { to: '/shareholder-assistant', label: 'Shareholder Assistant', icon: UsersRound },
 ]
 
 const ADMIN_ITEMS = [

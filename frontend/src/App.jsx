@@ -8,6 +8,8 @@ import authRoutes from './routes/auth.jsx'
 import stockAssistantRoutes from './routes/stockAssistant.jsx'
 import intentClassifierRoutes from './routes/intentClassifier.jsx'
 import emailDrafterRoutes from './routes/emailDrafter.jsx'
+import piiRedactionRoutes from './routes/piiRedaction.jsx'
+import shareholderAssistantRoutes from './routes/shareholderAssistant.jsx'
 import adminRoutes from './routes/admin.jsx'
 import ticketDashboardRoutes from './routes/TicketDashboard.jsx'
 import submitTicketRoutes from './routes/submitTicket.jsx'
@@ -26,6 +28,8 @@ const routes = [
       stockAssistantRoutes,
       intentClassifierRoutes,
       emailDrafterRoutes,
+      piiRedactionRoutes,
+      shareholderAssistantRoutes,
       adminRoutes,
       ticketDashboardRoutes,
       submitTicketRoutes

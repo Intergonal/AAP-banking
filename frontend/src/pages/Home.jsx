@@ -4,10 +4,12 @@ import {
   Database,
   Mail,
   MessageSquare,
+  Shield,
   Sparkles,
   TrendingUp,
   MessageCircleQuestionMark,
-  LayoutDashboard
+  LayoutDashboard,
+  UsersRound,
 } from 'lucide-react'
 import {
   Card,
@@ -63,6 +65,18 @@ const FEATURES = [
     icon: LayoutDashboard,
     title: 'Ticket Dashboard',
     description: 'View customer tickets.',
+  },
+  {
+    to: '/pii-redaction',
+    icon: Shield,
+    title: 'PII Redaction',
+    description: 'Mask sensitive personal information before safe analysis or sharing.',
+  },
+  {
+    to: '/shareholder-assistant',
+    icon: UsersRound,
+    title: 'Shareholder Assistant',
+    description: 'Support investor research, shareholder updates, and portfolio communications.',
   },
 ]
 
