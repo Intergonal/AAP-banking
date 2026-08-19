@@ -5,8 +5,10 @@ import {
   LogOut,
   Mail,
   MessageSquare,
+  Shield,
   Sparkles,
   TrendingUp,
+  UsersRound,
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import {
@@ -29,6 +31,8 @@ const FEATURE_ITEMS = [
   { to: '/stock-assistant/trading', label: 'Mock Trading', icon: TrendingUp },
   { to: '/intent-classifier', label: 'Intent Classifier', icon: Sparkles },
   { to: '/email-drafter', label: 'Email Drafter', icon: Mail },
+  { to: '/pii-redaction', label: 'PII Redaction', icon: Shield },
+  { to: '/shareholder-assistant', label: 'Shareholder Assistant', icon: UsersRound },
 ]
 
 const ADMIN_ITEMS = [

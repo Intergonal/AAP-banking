@@ -4,8 +4,10 @@ import {
   Database,
   Mail,
   MessageSquare,
+  Shield,
   Sparkles,
   TrendingUp,
+  UsersRound,
 } from 'lucide-react'
 import {
   Card,
@@ -49,6 +51,18 @@ const FEATURES = [
     icon: Mail,
     title: 'Email Drafter',
     description: 'Draft banking and support emails from a short prompt.',
+  },
+  {
+    to: '/pii-redaction',
+    icon: Shield,
+    title: 'PII Redaction',
+    description: 'Mask sensitive personal information before safe analysis or sharing.',
+  },
+  {
+    to: '/shareholder-assistant',
+    icon: UsersRound,
+    title: 'Shareholder Assistant',
+    description: 'Support investor research, shareholder updates, and portfolio communications.',
   },
 ]
 
