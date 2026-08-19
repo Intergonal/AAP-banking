@@ -6,6 +6,8 @@ import {
   MessageSquare,
   Sparkles,
   TrendingUp,
+  MessageCircleQuestionMark,
+  LayoutDashboard
 } from 'lucide-react'
 import {
   Card,
@@ -49,6 +51,18 @@ const FEATURES = [
     icon: Mail,
     title: 'Email Drafter',
     description: 'Draft banking and support emails from a short prompt.',
+  },
+  {
+    to: '/submit-ticket',
+    icon: MessageCircleQuestionMark,
+    title: 'Help',
+    description: 'Send a ticket to our customer support team.',
+  },
+  {
+    to: '/ticket-dashboard',
+    icon: LayoutDashboard,
+    title: 'Ticket Dashboard',
+    description: 'View customer tickets.',
   },
 ]
 
