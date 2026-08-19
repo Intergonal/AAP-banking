@@ -1,10 +1,11 @@
 """LSTM next-bar prediction tool (category: ml).
 
-Wraps the Gradio-hosted multi-stock LSTM: live 5-minute data -> preprocessing
-pipeline -> model inference -> human-readable direction forecast.
+Wraps the Hub-hosted multi-stock LSTM: live 5-minute data -> preprocessing
+pipeline -> in-process inference (Keras 3, torch backend) -> human-readable
+direction forecast.
 """
 
-from ...ml import gateway
+from ...ml import hub_model
 from ...ml.preprocess import TICKERS, build_sequence, fetch_5m_bars
 from .registry import tool
 
@@ -23,10 +24,10 @@ def predict_next_bar(ticker: str) -> str:
         if bars.empty:
             return f"Error: no market data available for {ticker}"
         sequence = build_sequence(bars, ticker)
-        result = gateway.predict(sequence)
+        result = hub_model.predict(sequence)
     except ValueError as e:
         return f"Error: {e}"
-    except gateway.ModelUnavailableError as e:
+    except hub_model.ModelUnavailableError as e:
         return f"Error: model unavailable — {e}"
     except Exception as e:
         return f"Error: prediction failed — {e}"

@@ -29,9 +29,9 @@ const FEATURES = [
   {
     to: '/stock-assistant/trading',
     icon: TrendingUp,
-    title: 'Mock Trading',
+    title: 'Trading',
     description:
-      'Paper-trade with $100,000 of virtual money, live prices, charts, and P&L tracking.',
+      'Trade with live prices, charts, and P&L tracking.',
   },
   {
     to: '/admin/rag',

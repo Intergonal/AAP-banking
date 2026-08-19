@@ -1,105 +1,626 @@
+import { useEffect, useRef, useState } from 'react'
+import { BrainCircuit } from 'lucide-react'
 import {
-  CartesianGrid,
-  Line,
-  LineChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts'
+  CandlestickSeries,
+  ColorType,
+  createChart,
+  createSeriesMarkers,
+} from 'lightweight-charts'
+import { cn } from '@/lib/utils'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import {
+  Popover,
+  PopoverContent,
+  PopoverDescription,
+  PopoverHeader,
+  PopoverTitle,
+  PopoverTrigger,
+} from '@/components/ui/popover'
+import { Switch } from '@/components/ui/switch'
+
+const MODEL_TICKERS = ['AAPL', 'AMZN', 'GOOG', 'MSFT']
 
 const PERIODS = [
+  { value: '1m', label: '1m' },
+  { value: '5m', label: '5m' },
+  { value: '30m', label: '30m' },
+  { value: '1h', label: '1H' },
   { value: '1d', label: '1D' },
-  { value: '5d', label: '5D' },
-  { value: '1mo', label: '1M' },
-  { value: '6mo', label: '6M' },
-  { value: '1y', label: '1Y' },
 ]
 
-function formatTick(datetime, period) {
-  const d = new Date(datetime)
-  if (Number.isNaN(d.getTime())) return ''
-  if (period === '1d') {
-    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+const INITIAL_CANDLES = 30
+const PREPEND_CHUNK = 60
+const WHITESPACE_COUNT = 3
+const GAP_ALPHA = 0.35
+const WEEKEND_GAP_SECONDS = 24 * 3600
+
+function cssVar(name, fallback) {
+  return (
+    getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback
+  )
+}
+
+function oklchToRgba(input) {
+  const match = input.match(/oklch\(([^)]+)\)/i)
+  if (!match) return null
+  const parts = match[1].split(/\s+/).filter(Boolean)
+  if (parts.length < 3) return null
+  let L = parseFloat(parts[0])
+  let C = parseFloat(parts[1])
+  const H = parseFloat(parts[2])
+  if (parts[0].endsWith('%')) L /= 100
+  if (parts[1].endsWith('%')) C /= 100
+  let alpha = 1
+  const alphaIdx = parts.indexOf('/')
+  if (alphaIdx !== -1 && parts[alphaIdx + 1]) {
+    alpha = parts[alphaIdx + 1].endsWith('%')
+      ? parseFloat(parts[alphaIdx + 1]) / 100
+      : parseFloat(parts[alphaIdx + 1])
   }
-  return d.toLocaleDateString([], { month: 'short', day: 'numeric' })
+  const a = C * Math.cos((H * Math.PI) / 180)
+  const b = C * Math.sin((H * Math.PI) / 180)
+  const l_ = L + 0.3963377774 * a + 0.2158037573 * b
+  const m_ = L - 0.1055613458 * a - 0.0638541728 * b
+  const s_ = L - 0.0894841775 * a - 1.291485548 * b
+  const l = l_ ** 3
+  const m = m_ ** 3
+  const s = s_ ** 3
+  let r = 4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s
+  let g = -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s
+  let bl = -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s
+  const clamp = (v) => (v < 0 ? 0 : v > 1 ? 1 : v)
+  r = clamp(r)
+  g = clamp(g)
+  bl = clamp(bl)
+  const to8 = (v) =>
+    Math.round((v <= 0.0031308 ? 12.92 * v : 1.055 * v ** (1 / 2.4) - 0.055) * 255)
+  return `rgba(${to8(r)}, ${to8(g)}, ${to8(bl)}, ${alpha})`
+}
+
+function chartColor(color, fallback) {
+  if (!color) return fallback
+  if (/^oklch\(/i.test(color)) {
+    const rgba = oklchToRgba(color)
+    if (rgba) return rgba
+  }
+  return color
+}
+
+function withAlpha(color, alpha) {
+  const m = color.match(/^rgba?\(([^)]+)\)$/)
+  if (m) {
+    const [r, g, b] = m[1].split(',').map(Number)
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`
+  }
+  return color
+}
+
+function toSeconds(datetime) {
+  const ms = Date.parse(datetime)
+  return Number.isNaN(ms) ? 0 : Math.floor(ms / 1000)
+}
+
+function computeGaps(points) {
+  const gaps = []
+  for (let i = 1; i < points.length; i++) {
+    const prev = toSeconds(points[i - 1].datetime)
+    const curr = toSeconds(points[i].datetime)
+    if (curr - prev > WEEKEND_GAP_SECONDS) gaps.push({ prev })
+  }
+  return gaps
+}
+
+function computeInterval(points) {
+  const deltas = []
+  for (let i = 1; i < points.length; i++) {
+    const d = toSeconds(points[i].datetime) - toSeconds(points[i - 1].datetime)
+    if (d > 0 && d <= WEEKEND_GAP_SECONDS) deltas.push(d)
+  }
+  if (!deltas.length) return 5 * 60
+  deltas.sort((a, b) => a - b)
+  return deltas[Math.floor(deltas.length / 2)]
+}
+
+function formatTick(time, period) {
+  const d = new Date(time * 1000)
+  if (period === '1d') {
+    return d.toLocaleDateString([], { month: 'short', day: 'numeric' })
+  }
+  return d.toLocaleDateString([], {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+function buildPredictedCandles(forecast) {
+  if (!forecast?.length) return []
+  return forecast
+    .map((f, i) => ({
+      time: toSeconds(f.datetime),
+      open: f.open,
+      high: f.high,
+      low: f.low,
+      close: f.close,
+      predicted: true,
+      step: i + 1,
+      direction: f.direction,
+      confidence: f.confidence,
+    }))
+    .filter((c) => c.time > 0)
 }
 
 function formatLabel(datetime, period) {
   const d = new Date(datetime)
   if (Number.isNaN(d.getTime())) return datetime
   if (period === '1d') {
-    return d.toLocaleString([], {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    })
+    return d.toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' })
   }
-  return d.toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' })
+  return d.toLocaleString([], {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
 }
 
-export default function PriceChart({ symbol, period, points, onPeriodChange, loading }) {
+class SessionGapRenderer {
+  constructor() {
+    this._bands = []
+    this._color = 'rgba(128, 128, 128, 0.2)'
+  }
+
+  setBands(bands) {
+    this._bands = bands
+  }
+
+  setColor(color) {
+    this._color = color
+  }
+
+  draw(target) {
+    const bands = this._bands
+    if (!bands.length) return
+    target.useMediaCoordinateSpace(({ context, mediaSize }) => {
+      context.fillStyle = this._color
+      for (const b of bands) {
+        if (b.right <= 0 || b.left >= mediaSize.width) continue
+        context.fillRect(b.left, 0, b.right - b.left, mediaSize.height)
+      }
+    })
+  }
+}
+
+class SessionGapPaneView {
+  constructor(renderer) {
+    this._renderer = renderer
+  }
+
+  renderer() {
+    return this._renderer
+  }
+}
+
+class SessionGapPrimitive {
+  constructor(chart, getGaps) {
+    this._chart = chart
+    this._getGaps = getGaps
+    this._renderer = new SessionGapRenderer()
+    this._paneView = new SessionGapPaneView(this._renderer)
+    this._views = [this._paneView]
+  }
+
+  updateAllViews() {
+    const ts = this._chart.timeScale()
+    const barSpacing = ts.options().barSpacing
+    const bands = this._getGaps()
+      .map(({ prev }) => {
+        const x = ts.timeToCoordinate(prev)
+        if (x === null) return null
+        return {
+          left: x + 0.5 * barSpacing,
+          right: x + (WHITESPACE_COUNT + 0.5) * barSpacing,
+        }
+      })
+      .filter(Boolean)
+    this._renderer.setBands(bands)
+  }
+
+  setColor(color) {
+    this._renderer.setColor(color)
+  }
+
+  paneViews() {
+    return this._views
+  }
+}
+
+export default function PriceChart({
+  symbol,
+  period,
+  points,
+  predictedBars,
+  predictionError,
+  onPeriodChange,
+  loading,
+  lstmEnabled,
+  lstmSteps,
+  onLstmEnabledChange,
+  onLstmStepsChange,
+}) {
+  const containerRef = useRef(null)
+  const chartRef = useRef(null)
+  const seriesRef = useRef(null)
+  const markersRef = useRef(null)
+  const tooltipRef = useRef(null)
+  const periodRef = useRef(period)
+  const pointsRef = useRef([])
+  const loadedCountRef = useRef(INITIAL_CANDLES)
+  const loadingRef = useRef(false)
+  const initialFitDoneRef = useRef(false)
+  const predictionRef = useRef([])
+  const applyWindowRef = useRef(null)
+  const gapsRef = useRef([])
+  const intervalRef = useRef(5 * 60)
+  const whitespaceTimesRef = useRef(new Set())
+  const gapPrimitiveRef = useRef(null)
+  const [themeTick, setThemeTick] = useState(0)
+
+  useEffect(() => {
+    periodRef.current = period
+  }, [period])
+
+  useEffect(() => {
+    predictionRef.current = predictedBars || []
+  }, [predictedBars])
+
+  useEffect(() => {
+    pointsRef.current = (points || []).filter((p) => toSeconds(p.datetime) > 0)
+    const total = pointsRef.current.length
+    loadedCountRef.current = Math.min(INITIAL_CANDLES, total)
+    initialFitDoneRef.current = false
+    loadingRef.current = false
+    gapsRef.current = computeGaps(points || [])
+    const interval = computeInterval(points || [])
+    intervalRef.current = interval
+    const whitespaceTimes = new Set()
+    for (const gap of gapsRef.current) {
+      for (let k = 1; k <= WHITESPACE_COUNT; k++) {
+        whitespaceTimes.add(gap.prev + interval * k)
+      }
+    }
+    whitespaceTimesRef.current = whitespaceTimes
+  }, [points])
+
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+
+    const upColor = chartColor(cssVar('--chart-2'), '#22c55e')
+    const downColor = chartColor(cssVar('--destructive'), '#ef4444')
+    const textColor = chartColor(cssVar('--foreground'), '#09090b')
+    const gridColor = chartColor(cssVar('--border'), 'rgba(128, 128, 128, 0.15)')
+
+    const chart = createChart(el, {
+      autoSize: true,
+      layout: {
+        background: { type: ColorType.Solid, color: 'transparent' },
+        textColor,
+      },
+      grid: {
+        vertLines: { color: 'rgba(128, 128, 128, 0.08)' },
+        horzLines: { color: gridColor },
+      },
+      rightPriceScale: {
+        borderVisible: false,
+      },
+      timeScale: {
+        borderVisible: false,
+        timeVisible: true,
+        secondsVisible: false,
+        tickMarkFormatter: (time) => {
+          if (typeof time !== 'number') return String(time)
+          if (whitespaceTimesRef.current.has(time)) return ''
+          return formatTick(time, periodRef.current)
+        },
+      },
+      localization: {
+        priceFormatter: (p) => `$${p.toFixed(2)}`,
+      },
+    })
+    chartRef.current = chart
+
+    const series = chart.addSeries(CandlestickSeries, {
+      upColor,
+      downColor,
+      borderUpColor: upColor,
+      borderDownColor: downColor,
+      wickUpColor: upColor,
+      wickDownColor: downColor,
+    })
+    seriesRef.current = series
+    markersRef.current = createSeriesMarkers(series, [])
+
+    const tooltip = document.createElement('div')
+    tooltip.style.display = 'none'
+    tooltip.className =
+      'pointer-events-none absolute z-10 rounded-lg border border-border/50 bg-background px-2.5 py-1.5 text-xs shadow-xl'
+    el.appendChild(tooltip)
+    tooltipRef.current = tooltip
+
+    function onCrosshair(param) {
+      if (!param.point || param.time === undefined) {
+        tooltip.style.display = 'none'
+        return
+      }
+      const d = param.seriesData.get(series)
+      if (!d) {
+        tooltip.style.display = 'none'
+        return
+      }
+      const up = d.close >= d.open
+      const color = up ? 'var(--chart-2)' : 'var(--destructive)'
+      const isPred = typeof d.predicted === 'boolean' && d.predicted
+      const label = new Date(d.time * 1000)
+      const rows = isPred
+        ? `
+            <div class="grid grid-cols-2 gap-x-4 gap-y-0.5">
+              <span class="text-muted-foreground">Predicted (LSTM) · step ${d.step}</span>
+              <span style="color:${color}">${d.direction === 'UP' ? '▲ UP' : '▼ DOWN'}</span>
+              <span class="text-muted-foreground">Confidence</span>
+              <span>${(d.confidence * 100).toFixed(1)}%</span>
+              <span class="text-muted-foreground">Open</span><span>$${d.open.toFixed(2)}</span>
+              <span class="text-muted-foreground">High</span><span>$${d.high.toFixed(2)}</span>
+              <span class="text-muted-foreground">Low</span><span>$${d.low.toFixed(2)}</span>
+              <span class="text-muted-foreground">Close</span><span style="color:${color}">$${d.close.toFixed(2)}</span>
+            </div>`
+        : `
+            <div class="grid grid-cols-2 gap-x-4 gap-y-0.5">
+              <span class="text-muted-foreground">Open</span><span>$${d.open.toFixed(2)}</span>
+              <span class="text-muted-foreground">High</span><span>$${d.high.toFixed(2)}</span>
+              <span class="text-muted-foreground">Low</span><span>$${d.low.toFixed(2)}</span>
+              <span class="text-muted-foreground">Close</span><span style="color:${color}">$${d.close.toFixed(2)}</span>
+            </div>`
+      tooltip.innerHTML = `
+        <p class="mb-1 font-medium">${formatLabel(label.toISOString(), periodRef.current)}</p>
+        ${rows}`
+      const elRect = el.getBoundingClientRect()
+      const left = param.point.x + 12
+      const top = param.point.y + 12
+      tooltip.style.display = 'block'
+      tooltip.style.left = `${Math.min(left, elRect.width - 220)}px`
+      tooltip.style.top = `${Math.min(top, elRect.height - 90)}px`
+    }
+    chart.subscribeCrosshairMove(onCrosshair)
+
+    function applyWindow() {
+      const series = seriesRef.current
+      const chart = chartRef.current
+      const markers = markersRef.current
+      if (!series || !chart || !markers) return
+
+      const upColor = chartColor(cssVar('--chart-2'), '#22c55e')
+      const downColor = chartColor(cssVar('--destructive'), '#ef4444')
+      series.applyOptions({
+        upColor,
+        downColor,
+        borderUpColor: upColor,
+        borderDownColor: downColor,
+        wickUpColor: upColor,
+        wickDownColor: downColor,
+      })
+      chart.applyOptions({
+        layout: {
+          textColor: chartColor(cssVar('--foreground'), '#09090b'),
+          background: { type: ColorType.Solid, color: 'transparent' },
+        },
+      })
+
+      const slice = pointsRef.current.slice(-loadedCountRef.current)
+      const interval = intervalRef.current
+      const real = []
+      const bars = []
+      let prevTime = null
+      for (const p of slice) {
+        const t = toSeconds(p.datetime)
+        if (prevTime !== null && t - prevTime > WEEKEND_GAP_SECONDS) {
+          for (let k = 1; k <= WHITESPACE_COUNT; k++) {
+            bars.push({ time: prevTime + interval * k })
+          }
+        }
+        const bar = { time: t, open: p.open, high: p.high, low: p.low, close: p.close }
+        real.push(bar)
+        bars.push(bar)
+        prevTime = t
+      }
+      const predicted = buildPredictedCandles(predictionRef.current)
+
+      const predMarkers = predicted.map((p) => ({
+        time: p.time,
+        position: p.direction === 'UP' ? 'belowBar' : 'aboveBar',
+        color: p.direction === 'UP' ? upColor : downColor,
+        shape: p.direction === 'UP' ? 'arrowUp' : 'arrowDown',
+        text: `LSTM ${p.step}`,
+      }))
+      for (const p of predicted) {
+        const baseColor = p.direction === 'UP' ? upColor : downColor
+        bars.push({
+          ...p,
+          color: withAlpha(baseColor, 0.35),
+          borderColor: withAlpha(baseColor, 0.6),
+          wickColor: withAlpha(baseColor, 0.5),
+        })
+      }
+
+      series.setData(bars.sort((a, b) => a.time - b.time))
+      markers.setMarkers(predMarkers)
+      chart.timeScale().applyOptions({ timeVisible: periodRef.current !== '1d' })
+    }
+    applyWindowRef.current = applyWindow
+
+    function onVisibleRange(range) {
+      if (!range) return
+      if (!initialFitDoneRef.current || loadingRef.current) return
+      const total = pointsRef.current.length
+      if (loadedCountRef.current >= total || range.from > 10) return
+      const prev = { from: range.from, to: range.to }
+      const added = Math.min(PREPEND_CHUNK, total - loadedCountRef.current)
+      loadedCountRef.current += added
+      loadingRef.current = true
+      applyWindow()
+      chart.timeScale().setVisibleLogicalRange({
+        from: prev.from + added,
+        to: prev.to + added,
+      })
+      loadingRef.current = false
+    }
+    chart.timeScale().subscribeVisibleLogicalRangeChange(onVisibleRange)
+
+    const primitive = new SessionGapPrimitive(chart, () => gapsRef.current)
+    gapPrimitiveRef.current = primitive
+    chart.panes()[0].attachPrimitive(primitive)
+
+    const observer = new MutationObserver(() => setThemeTick((t) => t + 1))
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
+
+    return () => {
+      observer.disconnect()
+      chart.unsubscribeCrosshairMove(onCrosshair)
+      chart.timeScale().unsubscribeVisibleLogicalRangeChange(onVisibleRange)
+      if (gapPrimitiveRef.current) {
+        chart.panes()[0].detachPrimitive(gapPrimitiveRef.current)
+        gapPrimitiveRef.current = null
+      }
+      applyWindowRef.current = null
+      tooltip.remove()
+      chart.remove()
+      chartRef.current = null
+      seriesRef.current = null
+      markersRef.current = null
+      tooltipRef.current = null
+    }
+  }, [])
+
+  useEffect(() => {
+    const chart = chartRef.current
+    if (!chart) return
+    gapPrimitiveRef.current?.setColor(
+      withAlpha(chartColor(cssVar('--border'), 'rgba(128, 128, 128, 0.3)'), GAP_ALPHA)
+    )
+    gapPrimitiveRef.current?.updateAllViews()
+    applyWindowRef.current?.()
+    if (!initialFitDoneRef.current) {
+      chart.timeScale().fitContent()
+      initialFitDoneRef.current = true
+    }
+  }, [points, predictedBars, period, themeTick])
+
+  const lastPred = predictedBars?.length
+    ? predictedBars[predictedBars.length - 1]
+    : null
+  const lstmApplicable = period === '5m' && MODEL_TICKERS.includes(symbol)
+
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center justify-between">
         <p className="text-sm font-medium">
-          {symbol} · Closing prices
+          {symbol} · Candles
           {loading && <span className="ml-2 text-xs text-muted-foreground">loading…</span>}
+          {lstmEnabled && period === '5m' && !loading && (
+            <span
+              className={cn(
+                'ml-2 text-xs',
+                lastPred
+                  ? 'text-muted-foreground'
+                  : predictionError
+                    ? 'text-destructive/80'
+                    : 'text-muted-foreground/60'
+              )}
+            >
+              {lastPred
+                ? `LSTM predicts ${lastPred.direction} (${(lastPred.confidence * 100).toFixed(0)}%) · ${predictedBars.length} steps`
+                : predictionError
+                  ? 'LSTM prediction unavailable'
+                  : ''}
+            </span>
+          )}
         </p>
-        <div className="flex gap-1">
+        <div className="flex items-center gap-1">
           {PERIODS.map((p) => (
             <button
               key={p.value}
               onClick={() => onPeriodChange(p.value)}
-              className={`h-7 rounded-md px-2.5 text-xs font-medium transition-colors ${
+              className={cn(
+                'h-7 rounded-md px-2.5 text-xs font-medium transition-colors',
                 period === p.value
                   ? 'bg-primary text-primary-foreground'
                   : 'bg-muted text-muted-foreground hover:bg-muted/70'
-              }`}
+              )}
             >
               {p.label}
             </button>
           ))}
+          <Popover>
+            <PopoverTrigger
+              className={cn(
+                'flex h-7 items-center gap-1 rounded-md px-2.5 text-xs font-medium transition-colors outline-none',
+                lstmEnabled
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-muted text-muted-foreground hover:bg-muted/70'
+              )}
+            >
+              <BrainCircuit className="size-3.5" />
+              LSTM
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-64">
+              <PopoverHeader>
+                <PopoverTitle className="flex items-center gap-1.5">
+                  <BrainCircuit className="size-3.5" />
+                  LSTM prediction
+                </PopoverTitle>
+                <PopoverDescription>
+                  Recursively forecast up to 5 bars ahead and overlay them on the chart.
+                </PopoverDescription>
+              </PopoverHeader>
+              <div className="flex items-center justify-between gap-2">
+                <Label htmlFor="lstm-enabled" className="text-sm">
+                  Enabled
+                </Label>
+                <Switch
+                  id="lstm-enabled"
+                  checked={lstmEnabled}
+                  onCheckedChange={onLstmEnabledChange}
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="lstm-steps" className="text-sm">
+                  Max steps
+                </Label>
+                <Input
+                  id="lstm-steps"
+                  type="number"
+                  min="1"
+                  max="5"
+                  value={lstmSteps}
+                  onChange={(e) => {
+                    const v = parseInt(e.target.value, 10)
+                    if (Number.isFinite(v) && v >= 1 && v <= 5) onLstmStepsChange(v)
+                  }}
+                  className="h-8"
+                />
+              </div>
+              {!lstmApplicable && (
+                <p className="text-xs text-muted-foreground">
+                  Only available on 5m charts for {MODEL_TICKERS.join(', ')}.
+                </p>
+              )}
+            </PopoverContent>
+          </Popover>
         </div>
       </div>
-      <div className="h-64 w-full">
-        <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={points} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
-            <CartesianGrid stroke="hsl(var(--border))" strokeDasharray="3 3" />
-            <XAxis
-              dataKey="datetime"
-              tickFormatter={(v) => formatTick(v, period)}
-              tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
-              minTickGap={32}
-            />
-            <YAxis
-              domain={['auto', 'auto']}
-              tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
-              tickFormatter={(v) => `$${v}`}
-              width={56}
-            />
-            <Tooltip
-              formatter={(value) => [`$${Number(value).toFixed(2)}`, 'Close']}
-              labelFormatter={(v) => formatLabel(v, period)}
-              contentStyle={{
-                background: 'hsl(var(--background))',
-                border: '1px solid hsl(var(--border))',
-                borderRadius: 8,
-                fontSize: 12,
-              }}
-            />
-            <Line
-              type="monotone"
-              dataKey="close"
-              stroke="hsl(var(--chart-1))"
-              strokeWidth={2}
-              dot={false}
-              activeDot={{ r: 4 }}
-            />
-          </LineChart>
-        </ResponsiveContainer>
-      </div>
+      <div ref={containerRef} className="relative h-80 w-full" />
     </div>
   )
 }

@@ -1,13 +1,23 @@
+import psycopg
 import yfinance as yf
+import pandas as pd
 from decimal import Decimal
 from flask import Blueprint, jsonify, request
 from google.genai import types
 
+from ..db import get_conn_string
 from ..stock_assistant.agent.rag import knowledge_base as kb
 from ..stock_assistant.agent.engine import run_agent
-from ..stock_assistant.ml import gateway
+from ..stock_assistant.ml import hub_model
 from ..stock_assistant.ml.preprocess import TICKERS, build_sequence, fetch_5m_bars
-from ..stock_assistant.trading import execute_trade, get_account, get_price, reset_account
+from ..stock_assistant.trading import (
+    execute_trade,
+    find_recipient,
+    get_account,
+    get_price,
+    reset_account,
+    transfer_cash,
+)
 from .auth import get_current_user
 
 stock_assistant = Blueprint(
@@ -43,8 +53,9 @@ def chat():
         return jsonify({"error": "message is required"}), 400
 
     history = _serialize_history(data.get("history") or [])
+    user = get_current_user()
     try:
-        reply, tool_calls = run_agent(history, message)
+        reply, tool_calls = run_agent(history, message, user_id=user["id"] if user else None)
     except Exception as e:
         return jsonify({"error": f"agent error: {e}"}), 502
 
@@ -75,6 +86,28 @@ def quote(symbol):
         return jsonify({"error": f"could not fetch quote for {symbol}: {e}"}), 502
 
 
+def _synthetic_bar(prev, recent, probability):
+    """Build the next simulated 5-minute bar from recent volatility and model confidence."""
+    direction = "UP" if probability > 0.5 else "DOWN"
+    confidence = probability if direction == "UP" else 1.0 - probability
+    recent = recent.tail(10)
+    mean_move = float((recent["close"] - recent["open"]).mean())
+    avg_body = float((recent["close"] - recent["open"]).abs().mean())
+    delta = max(abs(mean_move), avg_body) * (0.6 + confidence)
+    open_ = float(prev["close"])
+    close_ = open_ + delta if direction == "UP" else open_ - delta
+    return {
+        "datetime": prev["datetime"] + pd.Timedelta(minutes=5),
+        "open": open_,
+        "high": max(open_, close_) + delta * 0.25,
+        "low": min(open_, close_) - delta * 0.25,
+        "close": close_,
+        "probability": probability,
+        "direction": direction,
+        "confidence": confidence,
+    }
+
+
 @stock_assistant.post("/predict")
 def predict():
     data = request.get_json(silent=True) or {}
@@ -83,6 +116,12 @@ def predict():
         return jsonify({
             "error": f"ticker must be one of {', '.join(MODEL_TICKERS)}"
         }), 400
+    try:
+        steps = int(data.get("steps", 3))
+    except (TypeError, ValueError):
+        return jsonify({"error": "steps must be an integer between 1 and 5"}), 400
+    if not 1 <= steps <= 5:
+        return jsonify({"error": "steps must be between 1 and 5"}), 400
 
     try:
         bars = fetch_5m_bars(ticker)
@@ -92,36 +131,70 @@ def predict():
     if bars.empty:
         return jsonify({"error": f"no market data available for {ticker}"}), 502
 
+    current = bars.copy()
+    forecast = []
     try:
-        sequence = build_sequence(bars, ticker)
+        for _ in range(steps):
+            sequence = build_sequence(current, ticker)
+            result = hub_model.predict(sequence)
+            probabilities = result.get("probabilities") or []
+            if not probabilities:
+                return jsonify({"error": "model returned no probabilities"}), 502
+            probability = float(probabilities[0])
+            bar = _synthetic_bar(current.iloc[-1], current, probability)
+            forecast.append(bar)
+            current = pd.concat(
+                [
+                    current,
+                    pd.DataFrame([{
+                        "datetime": bar["datetime"],
+                        "open": bar["open"],
+                        "high": bar["high"],
+                        "low": bar["low"],
+                        "close": bar["close"],
+                    }]),
+                ],
+                ignore_index=True,
+            )
+    except hub_model.ModelUnavailableError as e:
+        return jsonify({"error": str(e)}), 503
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
 
-    try:
-        result = gateway.predict(sequence)
-        probabilities = result.get("probabilities") or []
-        if not probabilities:
-            return jsonify({"error": "model returned no probabilities"}), 502
-        probability = float(probabilities[0])
-    except gateway.ModelUnavailableError as e:
-        return jsonify({"error": str(e)}), 503
-
-    direction = "UP" if probability > 0.5 else "DOWN"
-    confidence = probability if direction == "UP" else 1.0 - probability
-
+    first = forecast[0]
     return jsonify({
         "ticker": ticker,
         "price": round(float(bars["close"].iloc[-1]), 2),
         "datetime": bars["datetime"].iloc[-1].isoformat(),
-        "direction": direction,
-        "probability": round(probability, 4),
-        "confidence": round(confidence, 4),
+        "direction": first["direction"],
+        "probability": round(first["probability"], 4),
+        "confidence": round(first["confidence"], 4),
+        "steps": steps,
+        "forecast": [
+            {
+                "datetime": b["datetime"].isoformat(),
+                "open": round(b["open"], 4),
+                "high": round(b["high"], 4),
+                "low": round(b["low"], 4),
+                "close": round(b["close"], 4),
+                "probability": round(b["probability"], 4),
+                "direction": b["direction"],
+                "confidence": round(b["confidence"], 4),
+            }
+            for b in forecast
+        ],
     })
 
 
 # ── Mock trading ──────────────────────────────────────────────────────
 
-PRICE_PERIODS = {"1d": "15m", "5d": "1d", "1mo": "1d", "3mo": "1d", "6mo": "1d", "1y": "1d"}
+PRICE_PERIODS = {
+    "1m": ("7d", "1m"),
+    "5m": ("60d", "5m"),
+    "30m": ("60d", "30m"),
+    "1h": ("730d", "1h"),
+    "1d": ("10y", "1d"),
+}
 
 
 def _auth_user():
@@ -131,11 +204,19 @@ def _auth_user():
     return user
 
 
+def _admin_user():
+    user = get_current_user()
+    if user is None:
+        return None
+    if not user["is_admin"]:
+        return None
+    return user
+
+
 def _live_account(user_id):
     """Enrich the account with live prices and unrealized P&L."""
     account = get_account(user_id)
     total_value = Decimal(str(account["cash"]))
-    total_cost = Decimal("0")
     positions = []
     for pos in account["positions"]:
         try:
@@ -158,14 +239,10 @@ def _live_account(user_id):
         })
         if value is not None:
             total_value += value
-            total_cost += cost
-    total_pl = total_value - total_cost
     return {
         **account,
         "positions": positions,
         "total_value": round(float(total_value), 2),
-        "total_pl": round(float(total_pl), 2),
-        "total_pl_pct": round(float(total_pl / total_cost * 100), 2) if total_cost else None,
     }
 
 
@@ -210,6 +287,30 @@ def account_reset():
         return jsonify({"error": f"could not reset account: {e}"}), 503
 
 
+@stock_assistant.get("/search")
+def search_symbols():
+    q = request.args.get("q", "").strip()
+    if len(q) < 2:
+        return jsonify({"results": []})
+    try:
+        quotes = yf.Search(q, max_results=8).quotes
+    except Exception as e:
+        return jsonify({"error": f"could not search symbols: {e}"}), 502
+    results = []
+    for r in quotes:
+        symbol = r.get("symbol") if isinstance(r, dict) else getattr(r, "symbol", None)
+        if not symbol:
+            continue
+        if isinstance(r, dict):
+            name = r.get("longname") or r.get("shortname") or ""
+            exchange = r.get("exchDisp") or r.get("exchange") or ""
+        else:
+            name = getattr(r, "longname", None) or getattr(r, "shortname", None) or ""
+            exchange = getattr(r, "exchange", None) or ""
+        results.append({"symbol": symbol, "name": name, "exchange": exchange})
+    return jsonify({"results": results})
+
+
 @stock_assistant.get("/prices/<symbol>")
 def prices(symbol):
     period = request.args.get("period", "1mo")
@@ -218,23 +319,100 @@ def prices(symbol):
             "error": f"period must be one of: {', '.join(PRICE_PERIODS)}"
         }), 400
     symbol = symbol.upper()
+    period_opt, interval = PRICE_PERIODS[period]
     try:
-        df = yf.Ticker(symbol).history(period=period, interval=PRICE_PERIODS[period], auto_adjust=True)
+        df = yf.Ticker(symbol).history(period=period_opt, interval=interval, auto_adjust=True)
     except Exception as e:
         return jsonify({"error": f"could not fetch price history for {symbol}: {e}"}), 502
     if df is None or df.empty:
         return jsonify({"error": f"no price history available for {symbol}"}), 404
+    df = df[~df.index.isna()]
+    df = df[~df.index.duplicated(keep="first")]
+    df = df.sort_index()
     points = [
-        {"datetime": idx.to_pydatetime().isoformat(), "close": round(float(row["Close"]), 4)}
+        {
+            "datetime": idx.to_pydatetime().isoformat(),
+            "open": round(float(row["Open"]), 4),
+            "high": round(float(row["High"]), 4),
+            "low": round(float(row["Low"]), 4),
+            "close": round(float(row["Close"]), 4),
+        }
         for idx, row in df.iterrows()
     ]
     return jsonify({"symbol": symbol, "period": period, "points": points})
+
+
+@stock_assistant.post("/transfer")
+def transfer():
+    user = _auth_user()
+    if user is None:
+        return jsonify({"error": "unauthorized"}), 401
+    data = request.get_json(silent=True) or {}
+    to_email = (data.get("to_email") or "").strip()
+    try:
+        result = transfer_cash(user["id"], to_email, data.get("amount"))
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    return jsonify(result)
+
+
+@stock_assistant.get("/transfers")
+def transfers_list():
+    user = _auth_user()
+    if user is None:
+        return jsonify({"error": "unauthorized"}), 401
+    with psycopg.connect(get_conn_string()) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT t.id, t.amount, t.created_at,
+                       CASE WHEN t.from_user_id = %s THEN 'out' ELSE 'in' END AS direction,
+                       CASE WHEN t.from_user_id = %s THEN u_to.name ELSE u_from.name END AS counterparty_name,
+                       CASE WHEN t.from_user_id = %s THEN u_to.email ELSE u_from.email END AS counterparty_email
+                FROM transfers t
+                JOIN users u_from ON u_from.id = t.from_user_id
+                JOIN users u_to ON u_to.id = t.to_user_id
+                WHERE t.from_user_id = %s OR t.to_user_id = %s
+                ORDER BY t.created_at DESC, t.id DESC
+                LIMIT 20
+                """,
+                (user["id"], user["id"], user["id"], user["id"], user["id"]),
+            )
+            rows = cur.fetchall()
+
+    return jsonify(
+        [
+            {
+                "id": r[0],
+                "amount": float(r[1]),
+                "timestamp": r[2].isoformat(),
+                "direction": r[3],
+                "counterparty_name": r[4],
+                "counterparty_email": r[5],
+            }
+            for r in rows
+        ]
+    )
+
+
+@stock_assistant.get("/recipient")
+def recipient():
+    user = _auth_user()
+    if user is None:
+        return jsonify({"error": "unauthorized"}), 401
+    email = (request.args.get("email") or "").strip()
+    result = find_recipient(email)
+    if result is None:
+        return jsonify({"error": f"no user found with email {email}"}), 404
+    return jsonify(result)
 
 
 # ── Knowledge base management ───────────────────────────────────────
 
 @stock_assistant.get("/kb")
 def kb_list():
+    if _admin_user() is None:
+        return jsonify({"error": "forbidden"}), 403
     try:
         return jsonify(kb.kb_overview())
     except Exception as e:
@@ -242,9 +420,9 @@ def kb_list():
 
 
 def _kb_mutation(mutation, *args):
-    """Apply a KB mutation (auth required), reload embeddings, return the fresh overview."""
-    if get_current_user() is None:
-        return jsonify({"error": "unauthorized"}), 401
+    """Apply a KB mutation (admin required), reload embeddings, return the fresh overview."""
+    if _admin_user() is None:
+        return jsonify({"error": "forbidden"}), 403
     try:
         mutation(*args)
     except ValueError as e:

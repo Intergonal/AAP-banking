@@ -1,13 +1,8 @@
 import { useState } from 'react'
+import { Send } from 'lucide-react'
 import { Button } from '../components/ui/button.jsx'
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from '../components/ui/card.jsx'
+import { Card, CardContent } from '../components/ui/card.jsx'
 import ChatMessage from '../stock_assistant/ChatMessage.jsx'
-import PredictionPanel from '../stock_assistant/PredictionPanel.jsx'
 import { sendChat } from '../stock_assistant/api.js'
 
 export default function StockAssistant() {
@@ -50,15 +45,10 @@ export default function StockAssistant() {
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      <PredictionPanel />
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Investment Assistant</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-3">
-          <div className="flex max-h-96 min-h-48 flex-col gap-3 overflow-y-auto p-1">
+    <div className="flex h-[calc(100dvh-5rem)] flex-col">
+      <Card className="flex h-full flex-col">
+        <CardContent className="flex min-h-0 flex-1 flex-col gap-3 pt-6">
+          <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-1">
             {messages.length === 0 && (
               <p className="text-sm text-muted-foreground">
                 Ask about your portfolio, stock prices, news, analyst ratings,
@@ -75,15 +65,20 @@ export default function StockAssistant() {
             )}
           </div>
 
-          <form onSubmit={handleSend} className="flex gap-2">
+          <form onSubmit={handleSend} className="flex shrink-0 gap-2">
             <input
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder="Ask about stocks, portfolio, or investments..."
               className="h-8 flex-1 rounded-lg border bg-background px-2.5 text-sm"
             />
-            <Button type="submit" disabled={loading || !input.trim()}>
-              Send
+            <Button
+              type="submit"
+              size="icon"
+              aria-label="Send"
+              disabled={loading || !input.trim()}
+            >
+              <Send data-icon="inline-start" />
             </Button>
           </form>
         </CardContent>

@@ -1,5 +1,6 @@
 import { Link, useLocation } from 'react-router-dom'
 import {
+  ArrowLeftRight,
   Database,
   Landmark,
   LogOut,
@@ -8,7 +9,8 @@ import {
   Sparkles,
   TrendingUp,
   MessageCircleQuestionMark,
-  LayoutDashboard
+  LayoutDashboard,
+  Users,
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import {
@@ -28,13 +30,15 @@ import {
 const FEATURE_ITEMS = [
   { to: '/', label: 'Home', icon: Landmark, end: true },
   { to: '/stock-assistant', label: 'Stock Assistant', icon: MessageSquare },
-  { to: '/stock-assistant/trading', label: 'Mock Trading', icon: TrendingUp },
+  { to: '/stock-assistant/trading', label: 'Trading', icon: TrendingUp },
+  { to: '/stock-assistant/transfer', label: 'Transfer', icon: ArrowLeftRight },
   { to: '/intent-classifier', label: 'Intent Classifier', icon: Sparkles },
   { to: '/email-drafter', label: 'Email Drafter', icon: Mail },
   { to: '/submit-ticket', label: 'Help', icon: MessageCircleQuestionMark },
 ]
 
 const ADMIN_ITEMS = [
+  { to: '/admin/users', label: 'Users', icon: Users },
   { to: '/admin/rag', label: 'RAG Management', icon: Database },
   { to: 'ticket-dashboard', label: 'Customer Ticket Dashboard', icon: LayoutDashboard}
 ]
@@ -50,7 +54,7 @@ function NavItem({ to, label, icon: Icon, end }) {
         tooltip={label}
       >
         <Icon />
-        <span>{label}</span>
+        <span className="group-data-[collapsible=icon]:hidden">{label}</span>
       </SidebarMenuButton>
     </SidebarMenuItem>
   )
@@ -65,10 +69,10 @@ export default function AppSidebar() {
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" render={<Link to="/" />}>
-              <div className="flex size-6 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+              <div className="flex size-6 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
                 <Landmark className="size-4" />
               </div>
-              <span className="font-semibold">AAP Banking</span>
+              <span className="group-data-[collapsible=icon]:hidden font-semibold">Bankly</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
@@ -86,32 +90,34 @@ export default function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
 
-        <SidebarGroup>
-          <SidebarGroupLabel>Admin</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {ADMIN_ITEMS.map((item) => (
-                <NavItem key={item.to} {...item} />
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+        {user?.is_admin && (
+          <SidebarGroup>
+            <SidebarGroupLabel>Admin</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {ADMIN_ITEMS.map((item) => (
+                  <NavItem key={item.to} {...item} />
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
       </SidebarContent>
 
       <SidebarFooter>
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton tooltip={user?.name}>
-              <span className="flex size-4 items-center justify-center rounded-full bg-primary text-[10px] font-semibold text-primary-foreground">
+              <span className="flex size-4 shrink-0 items-center justify-center rounded-full bg-primary text-[10px] font-semibold text-primary-foreground">
                 {(user?.name || '?').charAt(0).toUpperCase()}
               </span>
-              <span className="truncate">{user?.name}</span>
+              <span className="group-data-[collapsible=icon]:hidden truncate">{user?.name}</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton onClick={logout} tooltip="Log out">
               <LogOut />
-              <span>Log out</span>
+              <span className="group-data-[collapsible=icon]:hidden">Log out</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>

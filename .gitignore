@@ -11,3 +11,7 @@ backend/gradio_space
 .DS_Store
 
 AAP/
+
+.agents/
+skills-lock.json
+

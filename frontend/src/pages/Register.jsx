@@ -48,7 +48,7 @@ export default function Register() {
       <Card className="w-full max-w-sm">
         <CardHeader>
           <CardTitle>Create an account</CardTitle>
-          <CardDescription>Register for AAP Banking</CardDescription>
+          <CardDescription>Register for Bankly</CardDescription>
         </CardHeader>
         <form onSubmit={handleSubmit}>
           <CardContent className="space-y-4">

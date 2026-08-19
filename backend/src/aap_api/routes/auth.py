@@ -60,15 +60,17 @@ def login():
     with psycopg.connect(get_conn_string()) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT id, name, email, password_hash FROM users WHERE email = %s",
+                "SELECT id, name, email, password_hash, is_admin, disabled FROM users WHERE email = %s",
                 (email,),
             )
             row = cur.fetchone()
 
     if row is None or not check_password_hash(row[3], password):
         return jsonify({"error": "invalid email or password"}), 401
+    if row[5]:
+        return jsonify({"error": "account disabled"}), 401
 
-    user_id, name, user_email, _ = row
+    user_id, name, user_email, _, is_admin, _ = row
     token = jwt.encode(
         {
             "sub": str(user_id),
@@ -78,7 +80,15 @@ def login():
         algorithm=JWT_ALGORITHM,
     )
     return jsonify(
-        {"token": token, "user": {"id": user_id, "name": name, "email": user_email}}
+        {
+            "token": token,
+            "user": {
+                "id": user_id,
+                "name": name,
+                "email": user_email,
+                "is_admin": is_admin,
+            },
+        }
     )
 
 
@@ -95,14 +105,14 @@ def get_current_user():
     with psycopg.connect(get_conn_string()) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT id, name, email FROM users WHERE id = %s",
+                "SELECT id, name, email, is_admin, disabled FROM users WHERE id = %s",
                 (int(payload["sub"]),),
             )
             row = cur.fetchone()
 
-    if row is None:
+    if row is None or row[4]:
         return None
-    return {"id": row[0], "name": row[1], "email": row[2]}
+    return {"id": row[0], "name": row[1], "email": row[2], "is_admin": row[3]}
 
 
 @auth.get("/me")

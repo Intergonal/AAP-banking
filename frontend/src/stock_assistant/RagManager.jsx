@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react'
 import { Button } from '../components/ui/button.jsx'
+import { Card, CardContent } from '../components/ui/card.jsx'
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '../components/ui/card.jsx'
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../components/ui/select.jsx'
 import {
   addCommentaryEntry,
   addGlossaryEntry,
@@ -59,14 +60,11 @@ export default function RagManager() {
   return (
     <div className="flex flex-col gap-4">
       <Card>
-        <CardHeader>
-          <CardTitle>RAG Knowledge Base</CardTitle>
-          <CardDescription>
+        <CardContent>
+          <p className="mb-3 text-sm text-muted-foreground">
             Content the agent retrieves via search_knowledge_base. Changes are
             re-embedded immediately and visible to the agent. Writes require login.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
+          </p>
           <div className="mb-3 flex flex-wrap items-center gap-2">
             {TABS.map((t) => (
               <button
@@ -207,17 +205,18 @@ function MarkdownSection({ files, mutate, busy }) {
     <div className="flex flex-col gap-2">
       <div className="flex items-center gap-2">
         <label className="text-sm text-muted-foreground">File</label>
-        <select
-          value={current.file}
-          onChange={(e) => setFile(e.target.value)}
-          className="h-8 rounded-lg border bg-background px-2.5 text-sm"
-        >
-          {files.map((f) => (
-            <option key={f.file} value={f.file}>
-              {f.file}
-            </option>
-          ))}
-        </select>
+        <Select value={current.file} onValueChange={setFile}>
+          <SelectTrigger className="w-64">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {files.map((f) => (
+              <SelectItem key={f.file} value={f.file}>
+                {f.file}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
       <EntrySection
         entries={current.sections}

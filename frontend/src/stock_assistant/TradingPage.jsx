@@ -1,10 +1,14 @@
 import { useEffect, useState } from 'react'
+import { SearchIcon } from 'lucide-react'
 import { Button } from '../components/ui/button.jsx'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card.jsx'
 import { Input } from '../components/ui/input.jsx'
 import { Label } from '../components/ui/label.jsx'
-import { getAccount, getPriceSeries, getQuote, placeTrade, resetAccount } from './api.js'
+import { getAccount, getPriceSeries, getQuote, placeTrade, resetAccount, runPrediction } from './api.js'
 import PriceChart from './PriceChart.jsx'
+import SymbolSearchDialog from './SymbolSearchDialog.jsx'
+
+const MODEL_TICKERS = ['AAPL', 'AMZN', 'GOOG', 'MSFT']
 
 function fmtMoney(v) {
   if (v === null || v === undefined) return '—'
@@ -22,11 +26,15 @@ function fmtSigned(v) {
 
 export default function TradingPage() {
   const [symbol, setSymbol] = useState('AAPL')
-  const [symbolInput, setSymbolInput] = useState('AAPL')
-  const [period, setPeriod] = useState('1mo')
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [period, setPeriod] = useState('30m')
   const [points, setPoints] = useState([])
   const [chartLoading, setChartLoading] = useState(false)
   const [chartError, setChartError] = useState('')
+  const [predictedBars, setPredictedBars] = useState([])
+  const [predictionError, setPredictionError] = useState('')
+  const [lstmEnabled, setLstmEnabled] = useState(false)
+  const [lstmSteps, setLstmSteps] = useState(3)
 
   const [quote, setQuote] = useState(null)
   const [account, setAccount] = useState(null)
@@ -47,6 +55,18 @@ export default function TradingPage() {
     }
   }
 
+  async function loadPrediction(sym, per) {
+    setPredictedBars([])
+    setPredictionError('')
+    if (!lstmEnabled || per !== '5m' || !MODEL_TICKERS.includes(sym)) return
+    try {
+      const result = await runPrediction(sym, lstmSteps)
+      setPredictedBars(result.forecast || [])
+    } catch (err) {
+      setPredictionError(err.message)
+    }
+  }
+
   async function loadChart(sym, per) {
     setChartLoading(true)
     setChartError('')
@@ -60,6 +80,7 @@ export default function TradingPage() {
     } finally {
       setChartLoading(false)
     }
+    loadPrediction(sym, per)
   }
 
   async function loadQuote(sym) {
@@ -75,15 +96,19 @@ export default function TradingPage() {
   }, [])
 
   useEffect(() => {
-    loadChart(symbolInput, period)
-    loadQuote(symbolInput)
+    loadPrediction(symbol, period)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lstmEnabled, lstmSteps])
+
+  useEffect(() => {
+    loadChart(symbol, period)
+    loadQuote(symbol)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  function handleSymbolSubmit(e) {
-    e.preventDefault()
-    const sym = symbolInput.trim().toUpperCase()
-    if (!sym) return
+  function handleSelectSymbol(sym) {
+    setSearchOpen(false)
+    if (sym === symbol) return
     loadChart(sym, period)
     loadQuote(sym)
   }
@@ -118,7 +143,7 @@ export default function TradingPage() {
   }
 
   async function handleReset() {
-    if (!window.confirm('Reset your mock account to $100,000 cash with no positions?')) return
+    if (!window.confirm('Reset your trading account to $100,000 cash with no positions?')) return
     try {
       setAccount(await resetAccount())
       setMessage({ kind: 'success', text: 'Account reset to $100,000.' })
@@ -135,26 +160,22 @@ export default function TradingPage() {
   return (
     <div className="flex flex-col gap-4">
       <Card>
-        <CardHeader>
-          <CardTitle>Mock Trading</CardTitle>
-          <p className="text-xs text-muted-foreground">
-            Paper trading with virtual money — prices are live from Yahoo Finance, no real
-            orders are placed.
-          </p>
-        </CardHeader>
         <CardContent className="flex flex-col gap-4">
-          <form onSubmit={handleSymbolSubmit} className="flex gap-2">
-            <Input
-              value={symbolInput}
-              onChange={(e) => setSymbolInput(e.target.value.toUpperCase())}
-              placeholder="Ticker symbol, e.g. AAPL"
-              className="h-8 w-40"
-            />
-            <Button type="submit" variant="outline" className="h-8">
-              Load
-            </Button>
+          <p className="text-xs text-muted-foreground">
+            Paper trading demo — prices are live from Yahoo Finance, no real
+            money is moved.
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setSearchOpen(true)}
+              className="flex h-8 w-44 items-center gap-2 rounded-md border border-input bg-background px-3 text-sm shadow-xs outline-none transition-colors hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <SearchIcon className="size-3.5 text-muted-foreground" data-icon="inline-start" />
+              <span className="truncate font-medium">{symbol}</span>
+            </button>
             {quote && (
-              <span className="self-center text-sm text-muted-foreground">
+              <span className="text-sm text-muted-foreground">
                 {quote.symbol}: {fmtMoney(quote.price)}{' '}
                 {quote.change_pct !== null && quote.change_pct !== undefined && (
                   <span
@@ -168,7 +189,12 @@ export default function TradingPage() {
                 )}
               </span>
             )}
-          </form>
+          </div>
+          <SymbolSearchDialog
+            open={searchOpen}
+            onOpenChange={setSearchOpen}
+            onSelect={handleSelectSymbol}
+          />
 
           {chartError ? (
             <p className="text-sm text-red-600">{chartError}</p>
@@ -177,8 +203,14 @@ export default function TradingPage() {
               symbol={symbol}
               period={period}
               points={points}
+              predictedBars={predictedBars}
+              predictionError={predictionError}
               onPeriodChange={handlePeriodChange}
               loading={chartLoading}
+              lstmEnabled={lstmEnabled}
+              lstmSteps={lstmSteps}
+              onLstmEnabledChange={setLstmEnabled}
+              onLstmStepsChange={setLstmSteps}
             />
           )}
         </CardContent>
@@ -192,13 +224,13 @@ export default function TradingPage() {
           <CardContent className="flex flex-col gap-3">
             {accountError ? (
               <p className="text-sm text-red-600">
-                {accountError} — log in to access your mock account.
+                {accountError} — log in to access your account.
               </p>
             ) : !account ? (
               <p className="text-sm text-muted-foreground">Loading account…</p>
             ) : (
               <>
-                <div className="grid grid-cols-3 gap-2 text-sm">
+                <div className="grid grid-cols-2 gap-2 text-sm">
                   <div className="rounded-lg border p-2">
                     <p className="text-xs text-muted-foreground">Cash</p>
                     <p className="font-medium">{fmtMoney(account.cash)}</p>
@@ -206,19 +238,6 @@ export default function TradingPage() {
                   <div className="rounded-lg border p-2">
                     <p className="text-xs text-muted-foreground">Total value</p>
                     <p className="font-medium">{fmtMoney(account.total_value)}</p>
-                  </div>
-                  <div className="rounded-lg border p-2">
-                    <p className="text-xs text-muted-foreground">Total P&L</p>
-                    <p
-                      className={`font-medium ${
-                        account.total_pl >= 0 ? 'text-emerald-600' : 'text-red-600'
-                      }`}
-                    >
-                      {fmtSigned(account.total_pl)}
-                      {account.total_pl_pct !== null &&
-                        account.total_pl_pct !== undefined &&
-                        ` (${account.total_pl_pct >= 0 ? '+' : ''}${account.total_pl_pct}%)`}
-                    </p>
                   </div>
                 </div>
 
@@ -238,7 +257,7 @@ export default function TradingPage() {
                       {positions.length === 0 && (
                         <tr>
                           <td colSpan={6} className="py-3 text-muted-foreground">
-                            No positions yet — place your first mock trade.
+                            No positions yet — place your first trade.
                           </td>
                         </tr>
                       )}

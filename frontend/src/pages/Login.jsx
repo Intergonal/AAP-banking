@@ -48,7 +48,7 @@ export default function Login() {
       <Card className="w-full max-w-sm">
         <CardHeader>
           <CardTitle>Log in</CardTitle>
-          <CardDescription>Access your AAP Banking account</CardDescription>
+          <CardDescription>Access your Bankly account</CardDescription>
         </CardHeader>
         <form onSubmit={handleSubmit}>
           <CardContent className="space-y-4">

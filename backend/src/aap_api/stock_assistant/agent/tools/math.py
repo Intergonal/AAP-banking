@@ -177,7 +177,12 @@ def _format_number(value) -> str:
 
 @tool(category="math")
 def calculate(expression: str, variables: str = "{}") -> str:
-    """Evaluate a mathematical expression safely. Supports + - * / // % **, parentheses, comparisons (<, >, <=, >=, ==, !=), and/or, ternary (x if cond else y), and math functions: sqrt, log, log10, log2, exp, sin, cos, tan, asin, acos, atan, sinh, cosh, tanh, floor, ceil, fabs, hypot, degrees, radians, isfinite, isnan, isinf, abs, round, min, max. Constants: pi, e, tau. Pass numeric variables as a JSON object string, e.g. '{\"principal\": 10000, \"rate\": 0.07}'. Example: (10000 * (1 + 0.07/12) ** (12 * 5))."""
+    """Use for ANY arithmetic calculation: addition, subtraction, multiplication, division, percentages, ratios, sums, averages, comparisons, and compound-interest formulas. Call this tool whenever a number must be computed instead of calculating yourself. Supports + - * / // % **, parentheses, comparisons (<, >, <=, >=, ==, !=), and/or, ternary (x if cond else y), and math functions: sqrt, log, log10, log2, exp, sin, cos, tan, asin, acos, atan, sinh, cosh, tanh, floor, ceil, fabs, hypot, degrees, radians, isfinite, isnan, isinf, abs, round, min, max. Constants: pi, e, tau.
+
+    Args:
+        expression: Arithmetic expression string using the supported operators, e.g. "(10000 * (1 + 0.07/12) ** (12 * 5))" or "0.12 * 3500".
+        variables: Optional JSON object string of numeric variables referenced in the expression, e.g. '{"principal": 10000, "rate": 0.07}'.
+    """
     try:
         if isinstance(variables, str) and variables.strip():
             parsed = json.loads(variables)
@@ -210,7 +215,11 @@ def _as_array(values, label="prices") -> np.ndarray:
 
 @tool(category="math")
 def calculate_returns(prices: str) -> str:
-    """Calculate return statistics for a series of prices. prices is a JSON array of numbers (e.g. from get_price_series). Returns total return, mean and std of per-period returns, latest return, and max drawdown."""
+    """Use when the user asks about returns, gain/loss percentages, or drawdown on a price series. Returns total return, mean and std of per-period returns, latest return, and max drawdown.
+
+    Args:
+        prices: JSON array of numbers, e.g. "[100.5, 101.2, 99.8]".
+    """
     try:
         arr = _as_array(prices)
         if arr.size < 2:
@@ -233,7 +242,12 @@ def calculate_returns(prices: str) -> str:
 
 @tool(category="math")
 def moving_average(prices: str, window: int = 20) -> str:
-    """Calculate the simple moving average (SMA) of a price series. prices is a JSON array of numbers; window is the number of periods (default 20). Returns the latest SMA, whether price is above or below it, and a preview of the SMA series."""
+    """Use when the user asks for a moving average (SMA) or whether price is above/below its average. Returns the latest SMA, whether price is above or below it, and a preview of the SMA series.
+
+    Args:
+        prices: JSON array of numbers, e.g. "[100.5, 101.2, 99.8]".
+        window: Number of periods for the average (default 20).
+    """
     try:
         arr = _as_array(prices)
         if not 1 <= window <= len(arr):
@@ -253,7 +267,12 @@ def moving_average(prices: str, window: int = 20) -> str:
 
 @tool(category="math")
 def volatility(prices: str, window: int = 20) -> str:
-    """Calculate rolling and annualized volatility of a price series. prices is a JSON array of numbers; window is the rolling window in periods (default 20)."""
+    """Use when the user asks about volatility or standard deviation of a price series.
+
+    Args:
+        prices: JSON array of numbers, e.g. "[100.5, 101.2, 99.8]".
+        window: Rolling window in periods (default 20).
+    """
     try:
         arr = _as_array(prices)
         if not 2 <= window <= len(arr):
@@ -273,7 +292,12 @@ def volatility(prices: str, window: int = 20) -> str:
 
 @tool(category="math")
 def correlation(tickers: str, period: str = "1mo") -> str:
-    """Compute the pairwise correlation of daily returns between tickers. tickers is a JSON array of 2-8 ticker symbols (e.g. [\"AAPL\", \"MSFT\"]); period options: 5d, 1mo, 3mo, 6mo, 1y, 5y. Fetches price series from Yahoo Finance."""
+    """Use when the user asks whether stocks move together or for the correlation between tickers. Fetches price series from Yahoo Finance.
+
+    Args:
+        tickers: JSON array of 2-8 ticker symbols, e.g. '["AAPL", "MSFT"]'.
+        period: Options: 5d, 1mo, 3mo, 6mo, 1y, 5y (default 1mo).
+    """
     try:
         symbols = json.loads(tickers) if isinstance(tickers, str) else tickers
         if not isinstance(symbols, list) or not 2 <= len(symbols) <= 8:
@@ -308,7 +332,13 @@ def correlation(tickers: str, period: str = "1mo") -> str:
 
 @tool(category="math")
 def portfolio_stats(returns_arrays: str, weights: str, rf: float = 0.0) -> str:
-    """Calculate portfolio expected return, volatility, and Sharpe ratio from per-asset return series. returns_arrays is a JSON array where each element is a JSON array of per-period returns for one asset (e.g. [[0.01, -0.005, 0.002], [0.003, ...]]); weights is a JSON array of asset weights summing to 1 (e.g. [0.5, 0.5]); rf is the risk-free rate per period (default 0.0)."""
+    """Use when the user asks for portfolio expected return, volatility, or Sharpe ratio from asset return series.
+
+    Args:
+        returns_arrays: JSON array where each element is a JSON array of per-period returns for one asset, e.g. "[[0.01, -0.005, 0.002], [0.003, -0.001, 0.004]]".
+        weights: JSON array of asset weights summing to 1, e.g. "[0.5, 0.5]".
+        rf: Risk-free rate per period (default 0.0).
+    """
     try:
         raw_arrays = json.loads(returns_arrays) if isinstance(returns_arrays, str) else returns_arrays
         if not isinstance(raw_arrays, list) or len(raw_arrays) < 1:
@@ -338,7 +368,14 @@ def portfolio_stats(returns_arrays: str, weights: str, rf: float = 0.0) -> str:
 
 @tool(category="math")
 def time_value(present: float, rate: float, years: float, compounding: int = 12) -> str:
-    """Calculate the future value of money with compound interest. present: current amount; rate: annual interest rate as a decimal (e.g. 0.07 for 7%); years: number of years; compounding: compounding periods per year (default 12 = monthly). Returns future value, growth, and doubling time. Use a negative rate to discount to present value."""
+    """Use when the user asks about compound interest, future value, present value, or doubling time. Returns future value, growth, and doubling time. Use a negative rate to discount to present value.
+
+    Args:
+        present: Current amount (positive).
+        rate: Annual interest rate as a decimal, e.g. 0.07 for 7%.
+        years: Number of years.
+        compounding: Compounding periods per year (default 12 = monthly).
+    """
     if present <= 0:
         return "Error: present must be positive"
     if rate <= -1:
@@ -365,7 +402,13 @@ def time_value(present: float, rate: float, years: float, compounding: int = 12)
 
 @tool(category="math")
 def cagr(start_value: float, end_value: float, years: float) -> str:
-    """Calculate the compound annual growth rate (CAGR) between two values. start_value: beginning amount; end_value: ending amount; years: number of years. Returns CAGR as a percentage and total growth."""
+    """Use when the user asks for compound annual growth rate (CAGR) or average annual growth. Returns CAGR as a percentage and total growth.
+
+    Args:
+        start_value: Beginning amount (positive).
+        end_value: Ending amount (positive).
+        years: Number of years (positive).
+    """
     if start_value <= 0:
         return "Error: start_value must be positive"
     if end_value <= 0:
@@ -382,7 +425,11 @@ def cagr(start_value: float, end_value: float, years: float) -> str:
 
 @tool(category="math")
 def linear_trend(prices: str) -> str:
-    """Fit a linear trend to a price series. prices is a JSON array of numbers. Returns the slope per period, the approximate trend over the whole window, the intercept, and the R-squared coefficient."""
+    """Use when the user asks about a price trend line, slope, or linear regression fit. Returns the slope per period, the approximate trend over the whole window, the intercept, and the R-squared coefficient.
+
+    Args:
+        prices: JSON array of numbers, e.g. "[100.5, 101.2, 99.8]".
+    """
     try:
         arr = _as_array(prices)
         if arr.size < 3:

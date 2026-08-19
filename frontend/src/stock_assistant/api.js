@@ -7,10 +7,10 @@ export function sendChat(message, history) {
   })
 }
 
-export function runPrediction(ticker) {
+export function runPrediction(ticker, steps = 1) {
   return api('/stock-assistant/predict', {
     method: 'POST',
-    body: JSON.stringify({ ticker }),
+    body: JSON.stringify({ ticker, steps }),
   })
 }
 
@@ -33,10 +33,29 @@ export function resetAccount() {
   return api('/stock-assistant/account/reset', { method: 'POST' })
 }
 
+export function sendTransfer(to_email, amount) {
+  return api('/stock-assistant/transfer', {
+    method: 'POST',
+    body: JSON.stringify({ to_email, amount }),
+  })
+}
+
+export function getTransfers() {
+  return api('/stock-assistant/transfers')
+}
+
+export function getRecipient(email) {
+  return api(`/stock-assistant/recipient?email=${encodeURIComponent(email)}`)
+}
+
 export function getPriceSeries(symbol, period) {
   return api(
     `/stock-assistant/prices/${encodeURIComponent(symbol)}?period=${encodeURIComponent(period)}`
   )
+}
+
+export function searchSymbols(query) {
+  return api(`/stock-assistant/search?q=${encodeURIComponent(query)}`)
 }
 
 export function getKb() {
